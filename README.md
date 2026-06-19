@@ -1,19 +1,12 @@
 # FractionsOfACent
 
+**Version 1.0.0** | .NET 9 | SQL Server LocalDB
+
 **Public-service credential-leak detection. Find leaks, file courtesy issues, measure remediation — never store the secret.**
 
 A pipeline that watches public GitHub for exposed credentials — API keys, connection strings, private keys, plaintext passwords — opens a courtesy issue on the leaker's own repo asking them to rotate, then tracks whether the leak actually gets fixed. Originated as a Masters-thesis dataset on LLM API key prevalence; now covers the broader credential surface (see [Exposure types](#exposure-types)).
 
 The system records **metadata only**. Raw matches are SHA-256 hashed and discarded inside one function. No credential is persisted, logged, transmitted, returned from a function, or validated against any provider API. Detection, disclosure, and measurement — not exploitation.
-
-**Why FractionsOfACent:**
-
-- **Hash-and-discard at the code level.** The raw match exists in one local variable, gets hashed, and the variable goes out of scope. There is no path to disk for the credential itself — only the fingerprint, scheme prefix, and repo URL.
-- **Auto-inform is opt-in per category.** Every exposure type defaults to `auto_inform = false`. The CLI never files an issue until a human flips a category on in the Web UI. False positives against innocent repos are reputational damage; review precedes disclosure.
-- **The research artifact and the operator are the same binary.** Aggregate measurements (leak rate per provider, time-to-remediate, notice-to-remediation conversion) fall out for free as the pipeline runs.
-- **Loops forever by default.** Run with no args and the CLI scans on a 60s cadence, paces itself against GitHub's 30 req/min Code Search limit, absorbs `Retry-After` headers, and never crashes on a 403. `--headless` drops the menu for sidecar use; `--loop 5m` changes the cadence.
-- **One SQL Server LocalDB, two front ends.** The CLI scanner and the Blazor Server review UI both read/write the same `FractionsOfACent` database via EF Core — multiple scanners can run concurrently while a human is reviewing in the browser. Pause/resume from either surface is coordinated through a single `ScannerControl` row.
-- **IRB-defensible audit trail.** Every notice filed (and every remediation check that follows) is recorded in the same database, so you can report exactly what was sent, when, to whom, and what happened next.
 
 ---
 
@@ -74,7 +67,7 @@ Findings are categorized into four broad types via the
 
 | Type | What it covers | Auto-inform default |
 |---|---|---|
-| `ApiKey` | Provider tokens — Anthropic, OpenAI (incl. legacy), Google Gemini, AWS access keys, GitHub PATs (classic + fine + OAuth + app variants), Stripe live secret/restricted, Slack bot/user/webhook, Discord webhooks, Twilio, SendGrid, Mailgun, npm, PyPI, DigitalOcean PAT/OAuth, Shopify (private + access), Square access/secret, JWT | `false` |
+| `ApiKey` | Provider tokens — Anthropic, OpenAI (incl. legacy), Google Gemini, AWS access keys, GitHub PATs (classic + fine + OAuth + app variants), Stripe live secret/restricted, Slack bot/user/webhook, Discord webhooks, Twilio (SK\*), SendGrid, Mailgun, npm, PyPI, DigitalOcean PAT/OAuth, Shopify (private + access), Square access/secret, JWT | `false` |
 | `ConnectionString` | Postgres / MySQL / MongoDB / Redis URIs containing inline `user:pass@host` | `false` |
 | `PrivateKey` | PEM-encoded private key blocks: RSA, OpenSSH, EC, PGP | `false` |
 | `PlainTextPassword` | Contextual `password = "..."` literals + opt-in shape patterns. Opt-in only via `--include-passwords` because of the false-positive rate | `false` |
@@ -96,7 +89,7 @@ notices manually per finding, or do both.
   is bound to a local variable, used to compute SHA-256 + a short scheme
   prefix, then dropped. It is never written to disk, emitted to logs,
   serialized, or returned from a function. See
-  [`v2/Cli/Scraper.cs`](v2/Cli/Scraper.cs) `ScanItemAsync`.
+  [`v2/Cli/Scraper.cs`](v2/Cli/Scraper.cs) `ScanContent`.
 - **No validation**: the tool does not call provider APIs with detected
   credentials. Liveness is inferred from the recheck pass (does the
   hash still appear in the file?), not authenticated probes.
@@ -156,6 +149,13 @@ FractionsOfACent/
 │       │   └── DonutChart.razor
 │       ├── wwwroot/app.css
 │       └── appsettings.json
+├── docs/                       # Codex canonical documentation
+│   ├── BIBLE.md                # Architecture canon + project laws
+│   ├── AMENDMENTS.md           # Append-only change log
+│   ├── USER_STORIES.md         # Test-cited stories
+│   ├── data/exposure_types.json  # ExposureTypes catalog (canon-as-data)
+│   └── rfc/                    # Design notes
+├── tools/codex.ps1             # digest + doctor CLI
 └── v1/          # retired Python reference; do not extend
 ```
 
@@ -171,7 +171,9 @@ the single `ScannerControl` row.
 
 ```powershell
 dotnet build v2/Cli
-$env:GITHUB_TOKEN = "github_pat_..."   # or User Secrets / vault (see below)
+# Token resolution is automatic (see GitHub PAT section below).
+# Set GITHUB_TOKEN env var as the simplest override:
+$env:GITHUB_TOKEN = "github_pat_..."
 
 # Interactive (default) — scans every 60s in the background; in-terminal
 # menu accepts [p]ause, [r]esume, [s]tatus, [q]uit. Pause/resume route
@@ -209,6 +211,7 @@ Useful flags:
   Also accepts the `FRACTIONS_DB` env var.
 - `--report PATH` — output `.htm` report path (default `findings.htm`,
   regenerated each pass from the full DB).
+- `--max-per-provider N` (default 50) — caps per-needle file fetches per pass.
 - `--max-rechecks N` (default 100) / `--no-recheck` — caps the per-run
   remediation-recheck work.
 - `--max-notices N` (default 25) / `--no-notify` — caps the per-run
@@ -233,7 +236,7 @@ Three tabs:
   exposure type, provider, repo, file, first-seen date, notice
   status, remediation status, and check-back count. Per-row `Send`
   button manually files an issue. Live-updates every 3s while the page
-  is open (a small "live" indicator pulses near the page title).
+  is open.
 - **Visualizations** — KPI strip (Exposed LLM Credentials, Filed
   Issues, Remediated, % Remediated, Avg Time-to-Remediate, Avg
   Check-Backs Until Remediated) plus charts: cumulative findings vs.
@@ -253,19 +256,17 @@ notice template by setting `FractionsOfACent:NoticeChannel` /
 
 ## GitHub PAT
 
-Token resolution is centralized in `GitHubTokenProvider` (uses the
-shared `MindAttic.Vault` configuration source). The CLI and the Web
-app try sources in this order:
+Token resolution is centralized in `GitHubTokenProvider`. The CLI and
+the Web app try sources in this order:
 
-1. `MindAttic.Vault` — `%APPDATA%\MindAttic\GitHub\tokens.json`
-   (`{ "github": "github_pat_..." }`)
-2. .NET User Secrets — `dotnet user-secrets set "MindAttic:Vault:Tokens:github" "github_pat_..."`
-   from `v2/Cli` or `v2/Blazor` (both projects share the
-   `mindattic-vault-shared` secrets id)
-3. `GITHUB_TOKEN` env var
+1. `IConfiguration["MindAttic:Vault:Tokens:github"]` — App Service
+   Application Settings or Azure Key Vault (cloud-native).
+2. `MindAttic.Vault` token store — `%APPDATA%\MindAttic\Tokens\tokens.json`
+   (`{ "github": "github_pat_..." }`) — canonical local source.
+3. `GITHUB_TOKEN` env var.
 4. Legacy `%APPDATA%\MindAttic\FractionsOfACent\settings.json`
-   `{ "github_token": "github_pat_..." }` (deprecated — migrate to one
-   of the above)
+   `{ "github_token": "github_pat_..." }` — deprecated; migrate to one
+   of the above.
 
 A fine-grained PAT with public-repo read **and `Issues: write`** is
 sufficient for the full pipeline. (Issues:write is needed because the
@@ -280,7 +281,7 @@ GitHub authenticated rate limits:
 - Code Search: 30 req/min per token (the binding constraint)
 - Issue creation: subject to a stricter content-creation secondary limit
 
-The pipeline's `HandleRateLimitAsync` respects `Retry-After`,
+The pipeline's rate-limit handler respects `Retry-After`,
 `X-RateLimit-Remaining=0`/`X-RateLimit-Reset`, and falls back to a 60s
 back-off for secondary limits without an explicit hint. The `--loop`
 mode is designed to ride this out indefinitely. **Do not rotate
