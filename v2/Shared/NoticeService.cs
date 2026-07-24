@@ -1,4 +1,4 @@
-namespace FractionsOfACent;
+﻿namespace OpenCredentials;
 
 /// <summary>
 /// Configuration for the notice template. Lives in Web's appsettings.json,
@@ -103,6 +103,60 @@ public sealed class NoticeService
 
         return new NoticeSendResult(
             result.Ok, result.Number, result.HtmlUrl, result.Error, Skipped: false);
+    }
+
+    /// <summary>
+    /// Responsible-disclosure path: tries GitHub's private vulnerability
+    /// reporting API first (preferred — private, no public noise); falls back
+    /// to a public GitHub issue if the repo does not have the feature enabled.
+    /// Records which channel was actually used in the Notices table.
+    /// Idempotent: if either channel already has a "sent" row, returns Skipped.
+    /// </summary>
+    public async Task<NoticeSendResult> SendVulnerabilityReportAsync(
+        Finding finding, CancellationToken ct = default)
+    {
+        const string advisoryChannel = "github_advisory";
+
+        // Return immediately if we already sent via advisory channel.
+        var existingAdvisory = _db.GetNotice(
+            finding.KeySha256, finding.RepoFullName, finding.FilePath, advisoryChannel);
+        if (existingAdvisory is { Status: "sent" })
+        {
+            return new NoticeSendResult(
+                true, null, existingAdvisory.IssueHtmlUrl, null, Skipped: true);
+        }
+
+        var summary = Render(_config.Title, finding);
+        var description = Render(_config.Body, finding);
+
+        var advisory = await _client.TryOpenSecurityAdvisoryAsync(
+            finding.RepoFullName, summary, description, ct);
+
+        if (advisory is not null)
+        {
+            // Advisory API accepted the report (private disclosure).
+            var notice = new Notice(
+                KeySha256: finding.KeySha256,
+                RepoFullName: finding.RepoFullName,
+                FilePath: finding.FilePath,
+                Channel: advisoryChannel,
+                IssueNumber: null,
+                IssueHtmlUrl: advisory.HtmlUrl,
+                SentAtUtc: DateTime.UtcNow.ToString("O"),
+                Status: advisory.Ok ? "sent" : "failed",
+                Error: advisory.Error);
+
+            if (existingAdvisory is not null)
+                _db.DeleteNotice(finding.KeySha256, finding.RepoFullName,
+                    finding.FilePath, advisoryChannel);
+            _db.InsertNotice(notice);
+
+            if (advisory.Ok)
+                return new NoticeSendResult(true, null, advisory.HtmlUrl, null, Skipped: false);
+        }
+
+        // Advisory not available or failed — fall back to public issue.
+        return await SendAsync(finding, ct);
     }
 
     private static string Render(string template, Finding f) => template

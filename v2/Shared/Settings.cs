@@ -1,21 +1,21 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace FractionsOfACent;
+namespace OpenCredentials;
 
 public static class Settings
 {
     /// <summary>
     /// LocalDB connection used by both the CLI scraper and the Blazor app.
-    /// Override in Web's appsettings.json (ConnectionStrings:Fractions) or
-    /// via the FRACTIONS_DB env var for the CLI.
+    /// Override in Web's appsettings.json (ConnectionStrings:OpenCredentials) or
+    /// via the OPENCREDS_DB env var for the CLI.
     /// </summary>
     public const string DefaultConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=FractionsOfACent;" +
+        "Server=(localdb)\\MSSQLLocalDB;Database=OpenCredentials;" +
         "Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False";
 
     public static string ResolveConnectionString() =>
-        Environment.GetEnvironmentVariable("FRACTIONS_DB")
+        Environment.GetEnvironmentVariable("OPENCREDS_DB")
             ?? DefaultConnectionString;
 
     public static string ConfigPath
@@ -23,7 +23,7 @@ public static class Settings
         get
         {
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            return Path.Combine(appData, "MindAttic", "FractionsOfACent", "settings.json");
+            return Path.Combine(appData, "MindAttic", "OpenCredentials", "settings.json");
         }
     }
 

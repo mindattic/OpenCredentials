@@ -1,15 +1,15 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace FractionsOfACent;
+namespace OpenCredentials;
 
 public sealed class GitHubClient : IDisposable
 {
     private const string ApiBase = "https://api.github.com";
-    private const string UserAgent = "fractions-of-a-cent-research/0.1 (+academic study, metadata-only)";
+    private const string UserAgent = "open-credentials-research/0.1 (+academic study, metadata-only)";
 
     private readonly HttpClient _http;
 
@@ -146,6 +146,38 @@ public sealed class GitHubClient : IDisposable
         return new IssueResult(true, created?.Number, created?.HtmlUrl, null);
     }
 
+    /// <summary>
+    /// Attempts to file a private vulnerability report via GitHub's security
+    /// advisory API (the repo must have private vulnerability reporting enabled).
+    /// Returns null when the feature is unavailable (404 = not enabled, 403 =
+    /// no permission, 422 = validation error) so the caller can fall back to a
+    /// public issue. A null return is NOT an error — it means "use issue fallback."
+    /// </summary>
+    public async Task<AdvisoryResult?> TryOpenSecurityAdvisoryAsync(
+        string repoFullName, string summary, string description,
+        CancellationToken ct = default)
+    {
+        var url = $"/repos/{repoFullName}/security-advisories";
+        var payload = new AdvisoryCreateRequest(summary, description, "medium");
+        using var resp = await _http.PostAsJsonAsync(url, payload, ct);
+
+        // These codes mean "not available" — caller should fall back to issue.
+        if (resp.StatusCode is HttpStatusCode.NotFound
+                            or HttpStatusCode.Forbidden
+                            or HttpStatusCode.UnprocessableEntity)
+            return null;
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync(ct);
+            return new AdvisoryResult(false, null, null, $"{(int)resp.StatusCode}: {err}");
+        }
+
+        var created = await resp.Content.ReadFromJsonAsync<AdvisoryCreateResponse>(
+            cancellationToken: ct);
+        return new AdvisoryResult(true, created?.HtmlUrl, created?.GhsaId, null);
+    }
+
     private static FileContentResult ToResult(ContentsResponse payload)
     {
         var raw = "";
@@ -245,6 +277,8 @@ public sealed record RefetchResult(RefetchStatus Status, string Content, string?
 
 public sealed record IssueResult(bool Ok, int? Number, string? HtmlUrl, string? Error);
 
+public sealed record AdvisoryResult(bool Ok, string? HtmlUrl, string? GhsaId, string? Error);
+
 public sealed class IssueCreateRequest
 {
     [JsonPropertyName("title")] public string Title { get; }
@@ -256,6 +290,26 @@ public sealed class IssueCreateResponse
 {
     [JsonPropertyName("number")] public int? Number { get; set; }
     [JsonPropertyName("html_url")] public string? HtmlUrl { get; set; }
+}
+
+public sealed class AdvisoryCreateRequest
+{
+    [JsonPropertyName("summary")] public string Summary { get; }
+    [JsonPropertyName("description")] public string Description { get; }
+    [JsonPropertyName("severity")] public string Severity { get; }
+    [JsonPropertyName("vulnerabilities")] public object[] Vulnerabilities { get; } = [];
+    public AdvisoryCreateRequest(string summary, string description, string severity)
+    {
+        Summary = summary;
+        Description = description;
+        Severity = severity;
+    }
+}
+
+public sealed class AdvisoryCreateResponse
+{
+    [JsonPropertyName("html_url")] public string? HtmlUrl { get; set; }
+    [JsonPropertyName("ghsa_id")] public string? GhsaId { get; set; }
 }
 
 public sealed class CodeSearchResponse

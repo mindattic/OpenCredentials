@@ -1,10 +1,10 @@
-namespace FractionsOfACent;
+﻿namespace OpenCredentials;
 
 /// <summary>
 /// EF entity. The public-facing record (Finding) is preserved as a
 /// transport DTO so callers don't churn; Db converts at the boundary.
 /// Composite key (KeySha256, RepoFullName, FilePath) is configured in
-/// FractionsContext via Fluent API.
+/// OpenCredentialsContext via Fluent API.
 /// </summary>
 public class FindingEntity
 {

@@ -1,4 +1,4 @@
-namespace FractionsOfACent;
+﻿namespace OpenCredentials;
 
 /// <summary>
 /// One takedown notice we sent to the leaker. The (KeySha256, RepoFullName,

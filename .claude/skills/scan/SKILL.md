@@ -1,11 +1,11 @@
----
+﻿---
 name: scan
-description: Start the FractionsOfACent CLI scanner in headless looped mode. Continuously scans for exposed credentials until the user stops it.
+description: Start the OpenCredentials CLI scanner in headless looped mode. Continuously scans for exposed credentials until the user stops it.
 ---
 
 When invoked:
 
-1. From the project root (`D:\Projects\MindAttic\FractionsOfACent`), launch the CLI in the background with a log file:
+1. From the project root (`D:\Projects\MindAttic\OpenCredentials`), launch the CLI in the background with a log file:
 
    ```
    dotnet run --project v2/Cli -- --headless --loop 60
@@ -15,7 +15,7 @@ When invoked:
 
 2. Report back:
    - The background shell id (so the user can monitor/stop it).
-   - The log path (`scan-run.log`) and the `fractions` invocation used.
+   - The log path (`scan-run.log`) and the `opencreds` invocation used.
    - A reminder that the scanner pauses/resumes via the `ScannerControl` row (Blazor Settings tab) or by killing the background shell.
 
 Flags the user may ask for — pass them after the `--` in the dotnet command:
@@ -28,5 +28,5 @@ Flags the user may ask for — pass them after the `--` in the dotnet command:
 Notes:
 - Headless mode obeys `ScannerControl.RequestedState`, so the Blazor UI's pause button works without restarting.
 - Auto-notify defaults to off for every exposure type; the loop scans + rechecks but won't open issues until a category is flipped on in the Web UI.
-- Persistence is SQL Server LocalDB (`FractionsOfACent` database) — the Blazor app can run concurrently against the same DB.
+- Persistence is SQL Server LocalDB (`OpenCredentials` database) — the Blazor app can run concurrently against the same DB.
 - To stop: kill the background shell (or use the user's pause control). Do not auto-stop on the user's behalf.

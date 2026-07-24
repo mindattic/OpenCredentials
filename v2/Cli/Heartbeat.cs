@@ -1,4 +1,4 @@
-namespace FractionsOfACent;
+﻿namespace OpenCredentials;
 
 /// <summary>
 /// Transient stderr spinner — draws "[label]." → ".." → "..." on the

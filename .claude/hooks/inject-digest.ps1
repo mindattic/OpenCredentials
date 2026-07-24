@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
     SessionStart hook: inject docs/BIBLE.digest.md into Claude Code's context as
     authoritative project canon. Emits Claude Code hook JSON on stdout.
@@ -24,12 +24,12 @@ try {
     if ([string]::IsNullOrWhiteSpace($body)) { Write-Empty }
 
     $preamble = @"
-[FractionsOfACent — Codex canon, injected at session start]
+[OpenCredentials — Codex canon, injected at session start]
 The following is the AUTHORITATIVE project digest, generated from docs/BIBLE.md.
 Treat it as the source of truth for what the project IS, is NOT, and its Laws.
 Full detail lives in docs/BIBLE.md; amendments in docs/AMENDMENTS.md win over the
-bible. Reference facts by their {#FOAC-...} IDs. Do not retain raw credentials
-(FOAC-LAW-1); disclosure is opt-in per exposure type (FOAC-LAW-2).
+bible. Reference facts by their {#OC-...} IDs. Do not retain raw credentials
+(OC-LAW-1); disclosure is opt-in per exposure type (OC-LAW-2).
 
 "@
 

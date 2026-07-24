@@ -1,6 +1,6 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 
-namespace FractionsOfACent;
+namespace OpenCredentials;
 
 /// <summary>
 /// Persistence facade. Backed by EF Core against SQL Server LocalDB.
@@ -16,10 +16,10 @@ namespace FractionsOfACent;
 /// </summary>
 public sealed class Db : IDisposable
 {
-    private readonly IDbContextFactory<FractionsContext> _factory;
+    private readonly IDbContextFactory<OpenCredentialsContext> _factory;
     private readonly InlineFactory? _ownedFactory;
 
-    public Db(IDbContextFactory<FractionsContext> factory)
+    public Db(IDbContextFactory<OpenCredentialsContext> factory)
     {
         _factory = factory;
     }
@@ -50,7 +50,7 @@ public sealed class Db : IDisposable
     /// <summary>
     /// Used by Web's startup code on its DI-registered factory.
     /// </summary>
-    public static void EnsureCreatedAndSeeded(IDbContextFactory<FractionsContext> factory)
+    public static void EnsureCreatedAndSeeded(IDbContextFactory<OpenCredentialsContext> factory)
     {
         using (var ctx = factory.CreateDbContext())
         {
@@ -535,15 +535,15 @@ public sealed class Db : IDisposable
 
     public void Dispose() => _ownedFactory?.Dispose();
 
-    private sealed class InlineFactory : IDbContextFactory<FractionsContext>, IDisposable
+    private sealed class InlineFactory : IDbContextFactory<OpenCredentialsContext>, IDisposable
     {
-        private readonly DbContextOptions<FractionsContext> _opts;
+        private readonly DbContextOptions<OpenCredentialsContext> _opts;
         public InlineFactory(string cs)
         {
-            _opts = new DbContextOptionsBuilder<FractionsContext>()
+            _opts = new DbContextOptionsBuilder<OpenCredentialsContext>()
                 .UseSqlServer(cs).Options;
         }
-        public FractionsContext CreateDbContext() => new(_opts);
+        public OpenCredentialsContext CreateDbContext() => new(_opts);
         public void Dispose() { }
     }
 }

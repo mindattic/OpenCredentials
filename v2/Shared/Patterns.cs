@@ -1,6 +1,6 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
-namespace FractionsOfACent;
+namespace OpenCredentials;
 
 /// <summary>
 /// One detection rule. Provider is the specific source (e.g. 'aws',

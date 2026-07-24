@@ -1,7 +1,7 @@
-using System.Net;
+﻿using System.Net;
 using System.Text;
 
-namespace FractionsOfACent;
+namespace OpenCredentials;
 
 /// <summary>
 /// Self-contained HTML report generator. Emits a static file with inline
@@ -94,7 +94,7 @@ public static class Report
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>FractionsOfACent — Findings Report</title>
+<title>OpenCredentials — Findings Report</title>
 <style>
   :root { color-scheme: light dark;
           --bg:#0b0d10; --fg:#e6e6e6; --card:#151a20; --muted:#8a9099;
@@ -157,7 +157,7 @@ public static class Report
 </head>
 <body>
 <header>
-  <h1>FractionsOfACent — Leaked-Credential Prevalence</h1>
+  <h1>OpenCredentials — Leaked-Credential Prevalence</h1>
   <div class="subtitle">Metadata-only research dataset · generated {{E(generated)}} · {{total}} findings</div>
 </header>
 <main>

@@ -1,4 +1,4 @@
-# FractionsOfACent Project Rules
+﻿# OpenCredentials Project Rules
 
 ## Conversation
 - A bare "do" / "do it" / "yes" from the user means "continue", "keep going", "proceed". Resume the current task without asking for clarification.
@@ -7,8 +7,8 @@
 
 This repo follows the MindAttic **Codex** documentation standard. Treat these as the source of truth and keep them current as you work:
 
-- **`docs/BIBLE.md`** (L0) — what FractionsOfACent IS / is NOT, the architecture canon, and the Laws. Single home per fact; reference facts by their stable `{#FOAC-...}` ID, never by line number. README says how to build/run; the bible says how to think about the system.
-- **`docs/AMENDMENTS.md`** (L1) — append-only change log. Never rewrite an amendment; supersede with a new `FOAC-A<n>`. An amendment **wins** over the bible.
+- **`docs/BIBLE.md`** (L0) — what OpenCredentials IS / is NOT, the architecture canon, and the Laws. Single home per fact; reference facts by their stable `{#OC-...}` ID, never by line number. README says how to build/run; the bible says how to think about the system.
+- **`docs/AMENDMENTS.md`** (L1) — append-only change log. Never rewrite an amendment; supersede with a new `OC-A<n>`. An amendment **wins** over the bible.
 - **`docs/USER_STORIES.md`** (L2) — test-cited stories. Mark a story `✅` only when a test or build proves it ([HOUSE-LAW-8](../MindAttic.HouseRules.md#HOUSE-LAW-8)); otherwise `🟡`/`⬜`.
 - **`docs/rfc/`** — design notes; graduate decisions into the bible + stories, then mark the RFC superseded.
 - **`docs/data/*.json`** (L5) — canon-as-data (the `ExposureTypes` catalog). Cite entities by `id`; do not restate their fields in prose. JSON files validate against `docs/data/_schema/*.schema.json`.
@@ -22,6 +22,6 @@ The org-wide laws live in **`../MindAttic.HouseRules.md`** and are inherited by 
 - The `.claude/hooks/inject-digest.ps1` SessionStart hook injects the digest into context automatically.
 
 ### Hard invariants when changing code
-- **Never retain a raw credential** ([FOAC-LAW-1](docs/BIBLE.md#FOAC-LAW-1)) — only the SHA-256 fingerprint + 16-char prefix + length may persist.
-- **Disclosure is opt-in per exposure type** ([FOAC-LAW-2](docs/BIBLE.md#FOAC-LAW-2)) — `auto_inform` defaults to `false`.
-- **Never validate a credential against a provider API** ([FOAC-LAW-4](docs/BIBLE.md#FOAC-LAW-4)).
+- **Never retain a raw credential** ([OC-LAW-1](docs/BIBLE.md#OC-LAW-1)) — only the SHA-256 fingerprint + 16-char prefix + length may persist.
+- **Disclosure is opt-in per exposure type** ([OC-LAW-2](docs/BIBLE.md#OC-LAW-2)) — `auto_inform` defaults to `false`.
+- **Never validate a credential against a provider API** ([OC-LAW-4](docs/BIBLE.md#OC-LAW-4)).

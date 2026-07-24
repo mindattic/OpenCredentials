@@ -1,7 +1,7 @@
----
+﻿---
 codex: 1
-project: FractionsOfACent
-code: FOAC
+project: OpenCredentials
+code: OC
 layer: rfc
 status: planned
 updated: 2026-06-07
@@ -11,7 +11,7 @@ updated: 2026-06-07
 
 ## Problem
 
-FractionsOfACent's most important properties — **non-retention of secrets** ([FOAC-LAW-1](../BIBLE.md#FOAC-LAW-1)), **review-before-disclosure** ([FOAC-LAW-2](../BIBLE.md#FOAC-LAW-2)), and **race-safe concurrency** ([FOAC-LAW-5](../BIBLE.md#FOAC-LAW-5)) — are currently guaranteed only by code structure and reviewer discipline. There is **no automated test project** in the repo. That means no `✅` story exists, and a refactor could silently regress the IRB-defensible guarantees the project rests on.
+OpenCredentials's most important properties — **non-retention of secrets** ([OC-LAW-1](../BIBLE.md#OC-LAW-1)), **review-before-disclosure** ([OC-LAW-2](../BIBLE.md#OC-LAW-2)), and **race-safe concurrency** ([OC-LAW-5](../BIBLE.md#OC-LAW-5)) — are currently guaranteed only by code structure and reviewer discipline. There is **no automated test project** in the repo. That means no `✅` story exists, and a refactor could silently regress the IRB-defensible guarantees the project rests on.
 
 ## Options compared
 
@@ -21,7 +21,7 @@ FractionsOfACent's most important properties — **non-retention of secrets** ([
 
 ## Decision
 
-Pursue **Option 3**. Add a `FractionsOfACent.Tests` project that fakes the GitHub boundary and exercises the `Shared` engine + `Scraper` directly. Prioritize, in order: non-retention, pattern matching, auto-inform gate, notice idempotency, remediation transitions, concurrency claim.
+Pursue **Option 3**. Add a `OpenCredentials.Tests` project that fakes the GitHub boundary and exercises the `Shared` engine + `Scraper` directly. Prioritize, in order: non-retention, pattern matching, auto-inform gate, notice idempotency, remediation transitions, concurrency claim.
 
 ## What NOT to do
 
@@ -32,11 +32,11 @@ Pursue **Option 3**. Add a `FractionsOfACent.Tests` project that fakes the GitHu
 ## Phased plan (with risk)
 
 1. **Seam (low risk):** extract an interface for the GitHub boundary so tests can inject a fake. *Risk: touches `Shared` source — separate PR, separate review.*
-2. **Harness (low risk):** stand up `FractionsOfACent.Tests`, wire LocalDB/in-memory EF.
+2. **Harness (low risk):** stand up `OpenCredentials.Tests`, wire LocalDB/in-memory EF.
 3. **Invariant tests (medium):** non-retention + auto-inform gate first; these protect the laws.
 4. **Coverage (medium):** patterns, idempotency, remediation, concurrency.
 
 ## Graduates into
 
-- [BIBLE §6 — Verified state](../BIBLE.md#FOAC-§6) (flip evidence from "build only" to test-cited).
-- [USER_STORIES.md](../USER_STORIES.md) — promotes FOAC-US-A1/A2, B1/B3, C1, E3 from 🟡 to ✅ as each test lands.
+- [BIBLE §6 — Verified state](../BIBLE.md#OC-§6) (flip evidence from "build only" to test-cited).
+- [USER_STORIES.md](../USER_STORIES.md) — promotes OC-US-A1/A2, B1/B3, C1, E3 from 🟡 to ✅ as each test lands.

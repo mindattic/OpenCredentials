@@ -1,4 +1,4 @@
-using FractionsOfACent;
+﻿using OpenCredentials;
 using Microsoft.Extensions.Configuration;
 
 var reportPath = "findings.htm";
@@ -231,10 +231,10 @@ static bool TryNextDuration(string[] args, ref int i, out int seconds)
 static void PrintHelp()
 {
     Console.WriteLine("""
-        fractions — leaked-credential prevalence scanner (metadata only)
+        opencreds — leaked-credential prevalence scanner (metadata only)
 
         Usage:
-          fractions [--report findings.htm] [--connection "<conn-string>"]
+          opencreds [--report findings.htm] [--connection "<conn-string>"]
                     [--headless]
                     [--max-per-provider N]
                     [--max-rechecks N | --no-recheck]
@@ -271,9 +271,9 @@ static void PrintHelp()
                            auto_inform=true (default 25). --no-notify off.
         --max-per-provider N caps per-needle file fetches per pass (default 50).
 
-        Persistence is SQL Server LocalDB (FractionsOfACent database) by
+        Persistence is SQL Server LocalDB (OpenCredentials database) by
         default; --connection overrides for any other SQL Server instance,
-        as does the FRACTIONS_DB env var. The Blazor app reads from the
+        as does the OPENCREDS_DB env var. The Blazor app reads from the
         same database; both can run concurrently. The .htm report is
         regenerated each pass from the full DB.
 
@@ -281,7 +281,7 @@ static void PrintHelp()
           %APPDATA%\MindAttic\Tokens\tokens.json
             with { "github": "github_pat_..." }            (canonical), or
           GITHUB_TOKEN env var, or
-          %APPDATA%\MindAttic\FractionsOfACent\settings.json
+          %APPDATA%\MindAttic\\OpenCredentials\\settings.json
             with { "github_token": "github_pat_..." }       (legacy)
           Fine-grained PAT, public-repo read scope is enough.
 

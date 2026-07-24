@@ -1,4 +1,4 @@
-namespace FractionsOfACent;
+﻿namespace OpenCredentials;
 
 /// <summary>
 /// Interactive single-key TUI for the CLI. Background scan loop is owned

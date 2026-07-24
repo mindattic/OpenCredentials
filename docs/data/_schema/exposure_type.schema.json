@@ -1,8 +1,8 @@
-{
+﻿{
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://mindattic.com/fractionsofacent/schema/exposure_type.json",
-  "title": "FractionsOfACent ExposureType (L5 canon-as-data)",
-  "description": "One broad credential-exposure category. Mirrors the ExposureTypeEntity rows seeded from Patterns.cs ExposureTypes.All; the Findings foreign key points at Name. The auto_inform default gates the auto-notify pass (FOAC-LAW-2).",
+  "$id": "https://mindattic.com/OpenCredentials/schema/exposure_type.json",
+  "title": "OpenCredentials ExposureType (L5 canon-as-data)",
+  "description": "One broad credential-exposure category. Mirrors the ExposureTypeEntity rows seeded from Patterns.cs ExposureTypes.All; the Findings foreign key points at Name. The auto_inform default gates the auto-notify pass (OC-LAW-2).",
   "type": "object",
   "required": ["codex", "project", "code", "layer", "updated", "entities"],
   "additionalProperties": false,
@@ -34,7 +34,7 @@
           "description": { "type": "string" },
           "auto_inform_default": {
             "type": "boolean",
-            "description": "Seeded default of ExposureTypeEntity.AutoInform. Always false per FOAC-LAW-2."
+            "description": "Seeded default of ExposureTypeEntity.AutoInform. Always false per OC-LAW-2."
           },
           "opt_in_only": {
             "type": "boolean",

@@ -1,5 +1,5 @@
-using FractionsOfACent;
-using FractionsOfACent.Blazor.Components;
+﻿using OpenCredentials;
+using OpenCredentials.Blazor.Components;
 using Microsoft.EntityFrameworkCore;
 using MindAttic.Vault.Configuration;
 using MindAttic.Vault.DependencyInjection;
@@ -21,16 +21,16 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 var connectionString =
-    builder.Configuration.GetConnectionString("Fractions")
+    builder.Configuration.GetConnectionString("OpenCredentials")
     ?? Settings.ResolveConnectionString();
 
-builder.Services.AddDbContextFactory<FractionsContext>(opts =>
+builder.Services.AddDbContextFactory<OpenCredentialsContext>(opts =>
     opts.UseSqlServer(connectionString));
 
 // Db wraps the context factory; scoped matches Blazor Server's per-circuit
 // lifetime but the underlying factory is a singleton.
 builder.Services.AddScoped<Db>(sp =>
-    new Db(sp.GetRequiredService<IDbContextFactory<FractionsContext>>()));
+    new Db(sp.GetRequiredService<IDbContextFactory<OpenCredentialsContext>>()));
 
 // Singleton: the GitHub HTTP client is cheap to share, and the token
 // resolution only needs to happen once per process.
@@ -48,7 +48,7 @@ builder.Services.AddSingleton<GitHubClient>(sp =>
 builder.Services.AddSingleton<NoticeConfig>(sp =>
 {
     var cfg = sp.GetRequiredService<IConfiguration>();
-    var section = cfg.GetSection("FractionsOfACent");
+    var section = cfg.GetSection("OpenCredentials");
     var def = NoticeConfig.Default;
     return new NoticeConfig(
         Channel: section["NoticeChannel"] ?? def.Channel,
@@ -66,7 +66,7 @@ var app = builder.Build();
 // Apply migrations + seed exposure types on host start. Idempotent: if
 // the CLI scraper already created the schema, this is a fast no-op.
 Db.EnsureCreatedAndSeeded(
-    app.Services.GetRequiredService<IDbContextFactory<FractionsContext>>());
+    app.Services.GetRequiredService<IDbContextFactory<OpenCredentialsContext>>());
 
 if (!app.Environment.IsDevelopment())
 {

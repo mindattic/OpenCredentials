@@ -1,7 +1,7 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using MindAttic.Vault.Credentials;
 
-namespace FractionsOfACent;
+namespace OpenCredentials;
 
 /// <summary>
 /// Resolves the GitHub PAT used by <see cref="GitHubClient"/>. Walks four
@@ -13,7 +13,7 @@ namespace FractionsOfACent;
 ///         <c>%APPDATA%\MindAttic\Tokens\tokens.json</c> file.</description></item>
 ///   <item><description><c>GITHUB_TOKEN</c> environment variable — legacy convention.</description></item>
 ///   <item><description><see cref="Settings.LoadGitHubToken"/> — legacy
-///         <c>%APPDATA%\MindAttic\FractionsOfACent\settings.json</c>; will be removed in a
+///         <c>%APPDATA%\MindAttic\\OpenCredentials\\settings.json</c>; will be removed in a
 ///         future release once existing developer machines have migrated.</description></item>
 /// </list>
 /// Returns <c>null</c> when no source has a non-empty token. Callers that require

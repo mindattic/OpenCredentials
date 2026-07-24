@@ -1,8 +1,8 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace FractionsOfACent;
+namespace OpenCredentials;
 
 public sealed class Scraper
 {

@@ -1,4 +1,4 @@
-namespace FractionsOfACent;
+﻿namespace OpenCredentials;
 
 /// <summary>
 /// One metadata record per detected leak. No raw key is stored — only a

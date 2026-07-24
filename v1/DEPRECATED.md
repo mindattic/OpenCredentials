@@ -1,7 +1,7 @@
-# v1 — Python implementation, retired
+﻿# v1 — Python implementation, retired
 
 The Python scraper has been **retired**. As of 2026-04-25,
-FractionsOfACent is a C#-only application: the scanner, the notice
+OpenCredentials is a C#-only application: the scanner, the notice
 pipeline, the recheck pass, the Blazor UI, and the SQLite owner all
 live under `v2/`. This `v1/` directory is the historical Python side,
 kept on disk for reference only.
@@ -42,4 +42,4 @@ outside this directory.
 | `v1/db.py` | `v2/Shared/Db.cs` |
 | `v1/disclosure.py` | `v2/Shared/NoticeService.cs` + Blazor UI's Findings tab |
 | `v1/report.py` | `v2/Cli/Report.cs` + Blazor UI's Visualizations tab |
-| `v1/requirements.txt` | n/a — `v2/Cli/FractionsOfACent.Cli.csproj` |
+| `v1/requirements.txt` | n/a — `v2/Cli/OpenCredentials.Cli.csproj` |

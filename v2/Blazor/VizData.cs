@@ -1,6 +1,6 @@
-using System.Globalization;
+﻿using System.Globalization;
 
-namespace FractionsOfACent.Blazor;
+namespace OpenCredentials.Blazor;
 
 /// <summary>
 /// One snapshot of all numbers the Visualizations page needs. Computed

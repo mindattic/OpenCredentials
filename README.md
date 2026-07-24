@@ -1,4 +1,4 @@
-# FractionsOfACent
+﻿# OpenCredentials
 
 **Version 1.0.0** | .NET 9 | SQL Server LocalDB
 
@@ -40,8 +40,8 @@ The system records **metadata only**. Raw matches are SHA-256 hashed and discard
 ```
 
 Each invocation runs all three phases in order and persists everything
-to the SQL Server LocalDB `FractionsOfACent` database (override with
-`--connection` or the `FRACTIONS_DB` env var). The default mode loops
+to the SQL Server LocalDB `OpenCredentials` database (override with
+`--connection` or the `OPENCREDS_DB` env var). The default mode loops
 forever every 60s with an interactive menu; `--headless` drops the
 menu and pairs with `--loop` for daemon/sidecar use.
 
@@ -116,11 +116,11 @@ Hash-and-discard methodology follows:
 ## Repository layout
 
 ```
-FractionsOfACent/
+OpenCredentials/
 ├── v2/
-│   ├── Shared/                 # FractionsOfACent.Shared (library)
+│   ├── Shared/                 # OpenCredentials.Shared (library)
 │   │   ├── Entities.cs         # EF Core entity types
-│   │   ├── FractionsContext.cs # DbContext + model config
+│   │   ├── OpenCredentialsContext.cs # DbContext + model config
 │   │   ├── Db.cs               # Query/command facade used by both apps
 │   │   ├── Finding.cs
 │   │   ├── Notice.cs           # Notice + RemediationCheck records
@@ -129,13 +129,13 @@ FractionsOfACent/
 │   │   ├── GitHubTokenProvider.cs  # MindAttic.Vault + env + legacy resolver
 │   │   ├── Patterns.cs         # ProviderPattern[] + ExposureTypes
 │   │   └── Settings.cs         # LocalDB default + config paths
-│   ├── Cli/                    # FractionsOfACent.Cli (exe — `fractions`)
+│   ├── Cli/                    # OpenCredentials.Cli (exe — `opencreds`)
 │   │   ├── Program.cs          # arg parsing, interactive + headless modes
 │   │   ├── Scraper.cs          # 3-phase pipeline (scan/notify/recheck)
 │   │   ├── Menu.cs             # interactive TUI: p/r/s/q keys
 │   │   ├── Heartbeat.cs        # writes ScannerControl heartbeat each pass
 │   │   └── Report.cs           # renders findings.htm
-│   └── Blazor/                 # FractionsOfACent.Blazor (Blazor Server)
+│   └── Blazor/                 # OpenCredentials.Blazor (Blazor Server)
 │       ├── Program.cs          # DI + render pipeline
 │       ├── VizData.cs          # Visualizations data plumbing
 │       ├── Components/
@@ -160,7 +160,7 @@ FractionsOfACent/
 ```
 
 The CLI and the Web app both read/write the same SQL Server LocalDB
-`FractionsOfACent` database. EF Core + SQL Server's MVCC make concurrent
+`OpenCredentials` database. EF Core + SQL Server's MVCC make concurrent
 access from multiple CLI instances (e.g. an interactive session + a
 `--headless --loop` sidecar) race-safe. Pause/resume coordinates through
 the single `ScannerControl` row.
@@ -208,7 +208,7 @@ Useful flags:
   crashes on a 403. Default cadence is 60s when omitted in a long-lived
   mode (interactive or `--headless` without one-shot).
 - `--connection "<conn-string>"` — override the SQL Server connection.
-  Also accepts the `FRACTIONS_DB` env var.
+  Also accepts the `OPENCREDS_DB` env var.
 - `--report PATH` — output `.htm` report path (default `findings.htm`,
   regenerated each pass from the full DB).
 - `--max-per-provider N` (default 50) — caps per-needle file fetches per pass.
@@ -248,9 +248,9 @@ Three tabs:
   per exposure type. Heartbeat age from the scanner side is shown so
   you can confirm the sidecar is alive.
 
-The Web app reads `appsettings.json` for `ConnectionStrings:Fractions`
-(defaults to SQL Server LocalDB `FractionsOfACent`). Override the
-notice template by setting `FractionsOfACent:NoticeChannel` /
+The Web app reads `appsettings.json` for `ConnectionStrings:OpenCredentials`
+(defaults to SQL Server LocalDB `OpenCredentials`). Override the
+notice template by setting `OpenCredentials:NoticeChannel` /
 `NoticeTitle` / `NoticeBody`; otherwise the in-code default in
 [`NoticeService.cs`](v2/Shared/NoticeService.cs) is used.
 
@@ -264,7 +264,7 @@ the Web app try sources in this order:
 2. `MindAttic.Vault` token store — `%APPDATA%\MindAttic\Tokens\tokens.json`
    (`{ "github": "github_pat_..." }`) — canonical local source.
 3. `GITHUB_TOKEN` env var.
-4. Legacy `%APPDATA%\MindAttic\FractionsOfACent\settings.json`
+4. Legacy `%APPDATA%\MindAttic\OpenCredentials\settings.json`
    `{ "github_token": "github_pat_..." }` — deprecated; migrate to one
    of the above.
 

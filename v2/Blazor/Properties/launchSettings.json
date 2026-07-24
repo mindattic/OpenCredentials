@@ -1,6 +1,6 @@
-{
+﻿{
   "profiles": {
-    "FractionsOfACent.Blazor": {
+    "OpenCredentials.Blazor": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {

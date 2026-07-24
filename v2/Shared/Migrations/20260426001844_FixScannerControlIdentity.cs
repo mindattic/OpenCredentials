@@ -1,8 +1,8 @@
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace FractionsOfACent.Migrations
+namespace OpenCredentials.Migrations
 {
     /// <inheritdoc />
     public partial class FixScannerControlIdentity : Migration

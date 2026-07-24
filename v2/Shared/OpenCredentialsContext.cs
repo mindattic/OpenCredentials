@@ -1,14 +1,14 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace FractionsOfACent;
+namespace OpenCredentials;
 
 /// <summary>
 /// EF Core context backed by SQL Server LocalDB. The CLI scraper writes
 /// continuously; the Blazor UI reads. Composite keys mirror the original
 /// SQLite schema so dedup behavior is identical.
 /// </summary>
-public class FractionsContext : DbContext
+public class OpenCredentialsContext : DbContext
 {
     public DbSet<FindingEntity> Findings => Set<FindingEntity>();
     public DbSet<ScannedFileEntity> ScannedFiles => Set<ScannedFileEntity>();
@@ -17,7 +17,7 @@ public class FractionsContext : DbContext
     public DbSet<ExposureTypeEntity> ExposureTypes => Set<ExposureTypeEntity>();
     public DbSet<ScannerControlEntity> ScannerControls => Set<ScannerControlEntity>();
 
-    public FractionsContext(DbContextOptions<FractionsContext> options) : base(options) { }
+    public OpenCredentialsContext(DbContextOptions<OpenCredentialsContext> options) : base(options) { }
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -112,13 +112,13 @@ public class FractionsContext : DbContext
 /// connection without needing the Web project's host. Production code
 /// uses AddDbContext / AddDbContextFactory with the appsettings string.
 /// </summary>
-public class FractionsContextDesignFactory : IDesignTimeDbContextFactory<FractionsContext>
+public class OpenCredentialsContextDesignFactory : IDesignTimeDbContextFactory<OpenCredentialsContext>
 {
-    public FractionsContext CreateDbContext(string[] args)
+    public OpenCredentialsContext CreateDbContext(string[] args)
     {
-        var opts = new DbContextOptionsBuilder<FractionsContext>()
+        var opts = new DbContextOptionsBuilder<OpenCredentialsContext>()
             .UseSqlServer(Settings.DefaultConnectionString)
             .Options;
-        return new FractionsContext(opts);
+        return new OpenCredentialsContext(opts);
     }
 }
