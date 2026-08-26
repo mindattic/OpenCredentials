@@ -1,4 +1,4 @@
-# Research output — never commit findings (contains repo pointers to
+﻿# Research output â€” never commit findings (contains repo pointers to
 # live leaks; we forward via disclosure channels instead).
 findings.json
 findings.htm
@@ -23,4 +23,4 @@ obj/
 *.user
 *.suo
 .vs/
-.claude/checkpoint.md
+.claude/quicksave.md
