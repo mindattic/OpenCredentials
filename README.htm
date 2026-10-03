@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>OpenCredentials</title>
-<meta name="description" content="Version 1.0.0 | .NET 9 | SQL Server LocalDB">
+<meta name="description" content="Public-service credential-leak detection for GitHub: find exposed API keys and connection strings, file a courtesy notice with the repo owner, and measure whether the leak gets fixed, without ever storing the secret.">
 <meta name="generator" content="MindAttic Codex build-readme.ps1">
-<meta name="generated" content="2026-08-14">
+<meta name="generated" content="2026-10-03">
 <style>:root{
   --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;
   --border:#30363d;
@@ -111,117 +111,89 @@ pre:hover .cpbtn{opacity:1}
   </nav>
   <main id="content">
 <h1 id="opencredentials">OpenCredentials</h1>
-<p><strong>Version 1.0.0</strong> | .NET 9 | SQL Server LocalDB</p>
-<p><strong>Public-service credential-leak detection. Find leaks, file courtesy issues, measure remediation — never store the secret.</strong></p>
-<p>A pipeline that watches public GitHub for exposed credentials — API keys, connection strings, private keys, plaintext passwords — opens a courtesy issue (or, where supported, a private security advisory) on the leaker's own repo asking them to rotate, then tracks whether the leak actually gets fixed. Originated as a Masters-thesis dataset on LLM API key prevalence; now covers the broader credential surface (see <a href="#exposure-types">Exposure types</a>).</p>
-<p>The system records <strong>metadata only</strong>. Raw matches are SHA-256 hashed and discarded inside one function. No credential is persisted, logged, transmitted, returned from a function, or validated against any provider API. Detection, disclosure, and measurement — not exploitation.</p>
-<p>For the full architecture canon (Laws, domain model, verified state, glossary), see <strong><a href="docs/BIBLE.md">docs/BIBLE.md</a></strong>. This README says how to build and run; the bible says how to think about the system.</p>
-<hr>
-<h2 id="table-of-contents">Table of Contents</h2>
-<ul>
-<li><a href="#what-this-is">What this is</a></li>
-<li><a href="#pipeline-at-a-glance">Pipeline at a glance</a></li>
-<li><a href="#why-this-exists">Why this exists</a></li>
-<li><a href="#version-history-v1--v2">Version history: v1 → v2</a></li>
-<li><a href="#current-architecture">Current architecture</a></li>
-<li><a href="#exposure-types">Exposure types</a></li>
-<li><a href="#research-ethics--non-retention">Research ethics &amp; non-retention</a></li>
-<li><a href="#methodology-precedent">Methodology precedent</a></li>
-<li><a href="#repository-layout">Repository layout</a></li>
-<li><a href="#build--test">Build &amp; test</a></li>
-<li><a href="#running">Running</a><ul><li><a href="#scanner-cli">Scanner CLI</a></li><li><a href="#web-ui">Web UI</a></li><li><a href="#runbat">run.bat</a></li></ul></li>
-<li><a href="#findingsdb--findingshtm">findings.db &amp; findings.htm</a></li>
-<li><a href="#screenshots">Screenshots</a></li>
-<li><a href="#github-pat">GitHub PAT</a></li>
-<li><a href="#rate-limits">Rate limits</a></li>
-<li><a href="#documentation-canon">Documentation canon</a></li>
-<li><a href="#what-this-tool-does-not-do">What this tool does NOT do</a></li>
-</ul>
-<hr>
-<h2 id="what-this-is">What this is</h2>
-<p>OpenCredentials is a public-service credential-leak pipeline. It:</p>
-<ol>
-<li><strong>Scans</strong> public GitHub Code Search for regex-matched credential patterns (LLM/cloud API keys, DB connection strings, PEM private keys, contextual passwords).</li>
-<li><strong>Discloses</strong> a leak to the repo owner — preferring GitHub's private security-advisory channel, falling back to a public courtesy issue — but only for exposure types a human has explicitly opted into.</li>
-<li><strong>Rechecks</strong> every previously found leak on each pass to measure whether it was remediated, and how long that took.</li>
-</ol>
-<p>It ships as one solution, two runnable front doors, and one shared engine — a CLI scanner (<code>opencreds</code>) and a Blazor Server review UI — both reading and writing the same SQL Server LocalDB database. There are no offensive capabilities: nothing is validated against a live provider API, nothing is exploited, and the raw secret is never retained anywhere.</p>
-<h2 id="pipeline-at-a-glance">Pipeline at a glance</h2>
-<pre><code>                ┌──────────────────────────────────────────────────┐
+<p>Public-service credential-leak detection for GitHub: find exposed API keys and connection strings, file a courtesy notice with the repo owner, and measure whether the leak gets fixed, without ever storing the secret.</p>
+<p><a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-9-512BD4" alt=".NET 9"></a> <a href="#web-ui"><img src="https://img.shields.io/badge/UI-Blazor%20Server-5C2D91" alt="Blazor Server"></a> <a href="#how-it-works"><img src="https://img.shields.io/badge/storage-SQL%20Server%20LocalDB-CC2927" alt="SQL Server LocalDB"></a> <a href="docs/BIBLE.md"><img src="https://img.shields.io/badge/status-active-2ea44f" alt="Status active"></a> <a href="#license"><img src="https://img.shields.io/badge/license-none-lightgrey" alt="License none"></a></p>
+<pre><code class="language-text">                ┌──────────────────────────────────────────────────┐
                 │                                                  │
    GitHub  ─►   1. Scan  ─►  2. Notify (gated)  ─►  3. Recheck  ───┘
    Code Search                                       (every run)
    + Contents      └─ writes findings           └─ writes
                                                    remediation_checks
-   leaker repo  ◄─── auto-issue (only when auto_inform=true)</code></pre>
-<p>Each invocation runs all three phases in order and persists everything to the SQL Server LocalDB <code>OpenCredentials</code> database (override with <code>--connection</code> or the <code>OPENCREDS_DB</code> env var). The default mode loops forever every 60s with an interactive menu; <code>--headless</code> drops the menu and pairs with <code>--loop</code> for daemon/sidecar use.</p>
-<h2 id="why-this-exists">Why this exists</h2>
-<p>Leaked LLM keys, cloud credentials, payment-provider tokens, and DB connection strings are an active abuse vector on public GitHub. Providers run secret-scanning partner programs, and GitHub's Push Protection blocks many of them at push time. <strong>What's missing is the public-service tier</strong>: a third-party that observes the leaks, files a courteous notice on the leaker's own repo, then watches whether the leak gets remediated. That's what this project does.</p>
-<p>The research artifact and the public-service operator are the same binary. Aggregate measurements (leak rate per provider, time-to- remediate, notice-to-remediation conversion) fall out for free as the pipeline runs.</p>
-<h2 id="version-history-v1-v2">Version history: v1 → v2</h2>
-<table><thead><tr>
-<th></th>
-<th>v1 (<code>v1/</code>)</th>
-<th>v2 (<code>v2/</code>)</th>
-</tr></thead><tbody>
-<tr>
-<td>Language</td>
-<td>Python</td>
-<td>C# / .NET 9</td>
-</tr>
-<tr>
-<td>Status</td>
-<td><strong>Retired 2026-04-25</strong> — reference only, do not run</td>
-<td>Current, actively developed</td>
-</tr>
-<tr>
-<td>Storage</td>
-<td>SQLite</td>
-<td>SQL Server LocalDB</td>
-</tr>
-<tr>
-<td>Coverage</td>
-<td>Original LLM-key-only scope</td>
-<td>Broader surface: LLM/cloud API keys, GitHub PATs, payment tokens, DB connection strings, PEM private keys, contextual passwords</td>
-</tr>
-<tr>
-<td>Disclosure</td>
-<td><code>disclosure.py</code></td>
-<td><code>NoticeService</code> — advisory-first (private security advisory), falls back to a public issue</td>
-</tr>
-<tr>
-<td>Reporting</td>
-<td><code>report.py</code> (static HTML)</td>
-<td>Blazor Server live UI (Findings / Visualizations / Settings tabs) + <code>Report.cs</code> HTML export</td>
-</tr>
-<tr>
-<td>Front doors</td>
-<td>One scraper process</td>
-<td>CLI (<code>opencreds</code>) + Blazor UI sharing one engine (<code>OpenCredentials.Shared</code>)</td>
-</tr>
-</tbody></table>
-<p>The project also carried an early working title, <code>FractionsOfACent</code> (FOAC); every identifier — namespaces, DB name, CLI binary, settings paths, env vars — was renamed to <code>OpenCredentials</code> / <code>OC</code>. See <a href="docs/AMENDMENTS.md"><code>docs/AMENDMENTS.md</code></a> (<code>OC-A2</code>) for the full rename record and the advisory-first disclosure change.</p>
-<p><code>v1/</code> mirrors an earlier era when the project ran two parallel scrapers (Python + an early C# version) against the same SQLite DB. It never grew the exposure-type coverage the C# side now has, and the notify/recheck/Blazor pipeline was C#-only from the start. <strong>Do not run <code>v1/</code> code</strong> — it predates the current schema and will drift further from the scanner every release. See <a href="v1/DEPRECATED.md"><code>v1/DEPRECATED.md</code></a> for the full old-file → new-file mapping.</p>
-<h2 id="current-architecture">Current architecture</h2>
-<pre><code>   ┌─────────────┐        ┌──────────────────────────────┐        ┌──────────────┐
+   leaker repo  ◄─── advisory or issue (only when auto-inform is on)
+
+   raw match ─► SHA-256 + scheme prefix ─► discarded inside one function</code></pre>
+<p>OpenCredentials runs on your own machine against public GitHub; there is no hosted instance. Build it and open the review UI with <code>.\run.bat</code>.</p>
+<h2 id="why">Why</h2>
+<ul>
+<li>Close the gap between provider secret scanning and nobody at all: a third party that sees the leak, tells the owner politely, and checks back.</li>
+<li>Tell owners without making things worse: the notice carries only a SHA-256 fingerprint and scheme prefix, never the secret.</li>
+<li>Stay out of trouble with false positives: no notice goes out for a category until a human turns auto-inform on.</li>
+<li>Get research numbers for free: leak rate per provider, time to remediate and notice-to-fix conversion fall out of normal runs.</li>
+<li>Run it unattended: a headless loop rides out GitHub rate limits and can be paused from the web UI.</li>
+</ul>
+<h2 id="features">Features</h2>
+<h3 id="scan">Scan</h3>
+<ul>
+<li>Searches GitHub Code Search for regex-matched credential patterns across four exposure types: API keys, connection strings, private keys and (opt-in) plaintext passwords.</li>
+<li>Covers LLM and cloud API keys, GitHub PATs, payment, messaging and package-registry tokens, database URIs with inline credentials, and PEM private keys (<code>v2/Shared/Patterns.cs</code>).</li>
+<li>Hashes each raw match with SHA-256 and drops it in the same function; nothing is validated against a provider API.</li>
+</ul>
+<h3 id="notify">Notify</h3>
+<ul>
+<li><code>NoticeService</code> tries GitHub's private security-advisory channel first and falls back to a public courtesy issue on the leaker's own repo.</li>
+<li>Fires automatically only for exposure types switched to auto-inform; any finding can also be sent by hand from the web UI.</li>
+</ul>
+<h3 id="recheck">Recheck</h3>
+<ul>
+<li>Every pass re-fetches previously found files to see whether the hash is still there, recording each check so time-to-remediate and check-backs-until-fixed can be measured.</li>
+</ul>
+<h3 id="review-ui">Review UI</h3>
+<ul>
+<li>Findings: a paginated, live-updating table of every finding with notice and remediation status and a per-row Send button.</li>
+<li>Visualizations: KPIs plus cumulative, time-to-remediate, check-back, per-provider and remediation-status charts.</li>
+<li>Settings: scanner pause and resume, scanner heartbeat age, and per-type auto-inform toggles.</li>
+</ul>
+<h2 id="quick-start">Quick start</h2>
+<p>Prerequisites: the .NET 9 SDK, SQL Server LocalDB, and a fine-grained GitHub PAT with public-repo read (plus <code>Issues: write</code> if you want notices filed).</p>
+<pre><code class="language-powershell">git clone https://github.com/mindattic/OpenCredentials.git
+cd OpenCredentials
+dotnet build OpenCredentials.sln -c Release
+
+$env:GITHUB_TOKEN = "github_pat_..."
+
+# One scan / notify / recheck pass, then exit
+dotnet run --project v2/Cli -- --headless
+
+# Review what it found
+.\run.bat</code></pre>
+<p>The CLI writes findings to the LocalDB <code>OpenCredentials</code> database and regenerates <code>findings.htm</code>. <code>run.bat</code> starts the web UI and opens <code>http://localhost:50677/</code> in your browser once it is listening. Nothing is sent to anyone until you turn on auto-inform for a category or press Send on a finding.</p>
+<h2 id="how-it-works">How it works</h2>
+<p>Each invocation runs three phases in order and stores everything in the SQL Server LocalDB <code>OpenCredentials</code> database (override with <code>--connection</code> or the <code>OPENCREDS_DB</code> env var):</p>
+<ol>
+<li>Scan. Query GitHub Code Search for each pattern's needle, fetch matching files, run the regexes, and store metadata plus the SHA-256 of each match.</li>
+<li>Notify. For exposure types with auto-inform on, file an advisory or issue for unnotified findings, up to <code>--max-notices</code> per run.</li>
+<li>Recheck. Re-fetch earlier findings and record whether the hash is still present, up to <code>--max-rechecks</code> per run.</li>
+</ol>
+<p>The default mode loops every 60 seconds with an interactive menu; <code>--headless</code> drops the menu and pairs with <code>--loop</code> for daemon or sidecar use.</p>
+<pre><code class="language-text">   ┌─────────────┐        ┌──────────────────────────────┐        ┌──────────────┐
    │ Cli         │        │ Shared (library)             │        │ Blazor       │
    │ `opencreds` │──uses──│ Db · Scraper-DTOs · Patterns │──uses──│ Server UI    │
    │ scan/notify │        │ NoticeService · GitHubClient │        │ Findings/Viz │
-   │ /recheck    │        │ OpenCredentialsContext (EF Core)  │    │ /Settings    │
+   │ /recheck    │        │ OpenCredentialsContext (EF)  │        │ /Settings    │
    └──────┬──────┘        └───────────────┬──────────────┘        └──────┬───────┘
           │                               │                              │
           └──────────────► SQL Server LocalDB `OpenCredentials` ◄────────┘
                                (ScannerControl row coordinates pause/resume)</code></pre>
 <p>Three projects, one solution (<code>OpenCredentials.sln</code>):</p>
 <ul>
-<li><strong><code>OpenCredentials.Shared</code></strong> (<code>v2/Shared/</code>) — library: EF Core entities, <code>OpenCredentialsContext</code>, the <code>Db</code> persistence facade, detection patterns (<code>Patterns.cs</code>), <code>NoticeService</code>, <code>GitHubClient</code>, <code>GitHubTokenProvider</code>, settings. Consumed by both front doors.</li>
-<li><strong><code>OpenCredentials.Cli</code></strong> (<code>v2/Cli/</code>) — the <code>opencreds</code> executable: argument parsing, interactive + headless modes, the 3-phase pipeline (<code>Scraper.cs</code>), the interactive TUI menu (<code>Menu.cs</code>), heartbeat writer, HTML report renderer (<code>Report.cs</code>).</li>
-<li><strong><code>OpenCredentials.Blazor</code></strong> (<code>v2/Blazor/</code>) — Blazor Server review UI: Findings table, Visualizations (KPIs + charts), Settings (pause/resume + per-type auto-inform toggles).</li>
+<li><code>OpenCredentials.Shared</code> (<code>v2/Shared/</code>): EF Core entities, <code>OpenCredentialsContext</code>, the <code>Db</code> persistence facade, detection patterns (<code>Patterns.cs</code>), <code>NoticeService</code>, <code>GitHubClient</code>, <code>GitHubTokenProvider</code>, settings. Used by both front doors.</li>
+<li><code>OpenCredentials.Cli</code> (<code>v2/Cli/</code>): the <code>opencreds</code> executable. Argument parsing, interactive and headless modes, the three-phase pipeline (<code>Scraper.cs</code>), the interactive menu (<code>Menu.cs</code>), the heartbeat writer, and the HTML report renderer (<code>Report.cs</code>).</li>
+<li><code>OpenCredentials.Blazor</code> (<code>v2/Blazor/</code>): the Blazor Server review UI with Findings, Visualizations and Settings tabs.</li>
 </ul>
-<p>The CLI and the Web app both read/write the same SQL Server LocalDB <code>OpenCredentials</code> database. EF Core + SQL Server's MVCC make concurrent access from multiple CLI instances (e.g. an interactive session + a <code>--headless --loop</code> sidecar) race-safe. Pause/resume coordinates through the single <code>ScannerControl</code> row.</p>
-<p>The full domain model (entities, services, the project Laws) is canon in <a href="docs/BIBLE.md#OC-§4">docs/BIBLE.md §4</a> — not restated here to avoid two sources of truth.</p>
+<p>The CLI and the web app read and write the same database. EF Core and SQL Server's MVCC make concurrent access from several CLI instances (for example an interactive session plus a <code>--headless --loop</code> sidecar) race-safe. Pause and resume coordinate through the single <code>ScannerControl</code> row.</p>
+<p>The full domain model and the project Laws are canon in <a href="docs/BIBLE.md">docs/BIBLE.md</a> section 4.</p>
 <h2 id="exposure-types">Exposure types</h2>
-<p>Findings are categorized into four broad types via the <code>ExposureTypes</code> lookup table, joined to <code>Findings.ExposureType</code>. The catalog itself is canon-as-data at <a href="docs/data/exposure<em>types.json"><code>docs/data/exposure_types.json</code></a> (validated against <a href="docs/data/</em>schema/exposure_type.schema.json"><code>docs/data/_schema/exposure_type.schema.json</code></a>); the table below is a human-readable summary:</p>
+<p>Findings fall into four types via the <code>ExposureTypes</code> lookup table, joined to <code>Findings.ExposureType</code>. The catalog itself is canon-as-data at <a href="docs/data/exposure_types.json"><code>docs/data/exposure_types.json</code></a>, validated against <code>docs/data/_schema/exposure_type.schema.json</code>. Summary:</p>
 <table><thead><tr>
 <th>Type</th>
 <th>What it covers</th>
@@ -229,12 +201,12 @@ pre:hover .cpbtn{opacity:1}
 </tr></thead><tbody>
 <tr>
 <td><code>ApiKey</code></td>
-<td>Provider tokens — Anthropic, OpenAI (incl. legacy), Google Gemini, AWS access keys, GitHub PATs (classic + fine + OAuth + app variants), Stripe live secret/restricted, Slack bot/user/webhook, Discord webhooks, Twilio (SK\*), SendGrid, Mailgun, npm, PyPI, DigitalOcean PAT/OAuth, Shopify (private + access), Square access/secret, JWT</td>
+<td>Provider tokens: Anthropic, OpenAI (including legacy), Google Gemini, AWS access keys, GitHub PATs (classic, fine-grained, OAuth and app variants), Stripe live secret and restricted, Slack bot, user and webhook, Discord webhooks, Twilio, SendGrid, Mailgun, npm, PyPI, DigitalOcean PAT and OAuth, Shopify private and access, Square access and secret, JWT</td>
 <td><code>false</code></td>
 </tr>
 <tr>
 <td><code>ConnectionString</code></td>
-<td>Postgres / MySQL / MongoDB / Redis URIs containing inline <code>user:pass@host</code></td>
+<td>Postgres, MySQL, MongoDB and Redis URIs containing inline <code>user:pass@host</code></td>
 <td><code>false</code></td>
 </tr>
 <tr>
@@ -244,171 +216,231 @@ pre:hover .cpbtn{opacity:1}
 </tr>
 <tr>
 <td><code>PlainTextPassword</code></td>
-<td>Contextual <code>password = "..."</code> literals + opt-in shape patterns. Opt-in only via <code>--include-passwords</code> because of the false-positive rate</td>
+<td>Contextual <code>password = "..."</code> literals plus opt-in shape patterns. Enabled only with <code>--include-passwords</code> because of the false-positive rate</td>
 <td><code>false</code></td>
 </tr>
 </tbody></table>
-<p><strong>Every type defaults to <code>auto_inform = false</code></strong> — the CLI's auto-notify pass does nothing until you flip a category on in the Web UI. This is deliberate: false positives that auto-file public issues against innocent repos = real reputational harm. You review, then approve.</p>
-<p>The Web UI can either flip a whole category to auto-inform, or send notices manually per finding, or do both.</p>
-<h2 id="research-ethics-non-retention">Research ethics &amp; non-retention</h2>
+<p>Every type defaults to auto-inform off, so the CLI's auto-notify pass does nothing until you switch a category on in the web UI. This is deliberate: a false positive that auto-files a public issue against an innocent repo does real reputational harm. You review, then approve. The web UI can switch a whole category to auto-inform, send notices per finding, or both.</p>
+<h2 id="research-ethics-and-non-retention">Research ethics and non-retention</h2>
 <ul>
-<li><strong>Scope</strong>: public repositories indexed by GitHub Code Search. No private data, no auth-walled endpoints, no cloning, no execution of   repo code.</li>
-<li><strong>Non-retention</strong> is enforced at the code level. The raw regex match is bound to a local variable, used to compute SHA-256 + a short scheme   prefix, then dropped. It is never written to disk, emitted to logs,   serialized, or returned from a function. See   <a href="v2/Cli/Scraper.cs"><code>v2/Cli/Scraper.cs</code></a> <code>ScanContent</code>.</li>
-<li><strong>No validation</strong>: the tool does not call provider APIs with detected credentials. Liveness is inferred from the recheck pass (does the   hash still appear in the file?), not authenticated probes.</li>
-<li><strong>Public disclosure via issues (or advisories)</strong>: the <code>Notify</code> pass first attempts GitHub's private security-advisory API, and falls   back to opening a public GitHub issue on the leaker's own repo when   advisories aren't available. Either way, the disclosure body is   markdown, links to the offending file, and includes only the SHA-256   fingerprint and scheme prefix — never the secret itself. Public   issues <code>@</code>-mention the repo owner so GitHub's notification system   emails them automatically.</li>
-<li><strong>IRB note</strong>: opening a public issue (or private advisory) on someone's repo is a third-party disclosure act. For a   thesis-committee record, document this as part of your IRB   submission. The project keeps the audit trail (<code>Notices</code> table +   <code>RemediationChecks</code> table) so you can report exactly what was sent,   when, to whom, and what happened next.</li>
+<li>Scope. Public repositories indexed by GitHub Code Search only. No private data, no auth-walled endpoints, no cloning, no execution of repo code.</li>
+<li>Non-retention is enforced in code. The raw regex match is bound to a local variable, used to compute SHA-256 and a short scheme prefix, then dropped. It is never written to disk, logged, serialized or returned from a function. See <code>ScanContent</code> in <a href="v2/Cli/Scraper.cs">v2/Cli/Scraper.cs</a>.</li>
+<li>No validation. The tool never calls provider APIs with detected credentials. Liveness is inferred from the recheck pass (does the hash still appear in the file?), not from authenticated probes.</li>
+<li>Disclosure. The Notify pass first tries GitHub's private security-advisory API and falls back to a public issue on the leaker's own repo. Either way the body is Markdown, links to the offending file, and includes only the SHA-256 fingerprint and scheme prefix. Public issues mention the repo owner so GitHub emails them.</li>
+<li>IRB note. Opening an issue or advisory on someone's repo is a third-party disclosure act; for a thesis committee, document it in your IRB submission. The <code>Notices</code> and <code>RemediationChecks</code> tables keep the audit trail of what was sent, when, to whom, and what happened next.</li>
 </ul>
-<h2 id="methodology-precedent">Methodology precedent</h2>
-<p>Hash-and-discard methodology follows:</p>
-<blockquote><p>Meli, M., McNiece, M. R., &amp; Reaves, B. (2019). <em>How Bad Can It Git? Characterizing Secret Leakage in Public GitHub Repositories.</em> NDSS. &lt;https://www.ndss-symposium.org/ndss-paper/how-bad-can-it-git-characterizing-secret-leakage-in-public-github-repositories/&gt;</p></blockquote>
-<h2 id="repository-layout">Repository layout</h2>
-<pre><code>OpenCredentials/
-├── v2/                          # Current implementation (C# / .NET 9)
-│   ├── Shared/                  # OpenCredentials.Shared (library)
-│   │   ├── Entities.cs          # EF Core entity types
-│   │   ├── OpenCredentialsContext.cs # DbContext + model config
-│   │   ├── Db.cs                # Query/command facade used by both apps
-│   │   ├── Finding.cs
-│   │   ├── Notice.cs            # Notice + RemediationCheck records
-│   │   ├── NoticeService.cs     # Advisory/issue-opening + notice persistence
-│   │   ├── GitHubClient.cs      # Search, fetch, refetch, open-issue/advisory
-│   │   ├── GitHubTokenProvider.cs  # MindAttic.Vault + env + legacy resolver
-│   │   ├── Patterns.cs          # ProviderPattern[] + ExposureTypes
-│   │   └── Settings.cs          # LocalDB default + config paths
-│   ├── Cli/                     # OpenCredentials.Cli (exe — `opencreds`)
-│   │   ├── Program.cs           # arg parsing, interactive + headless modes
-│   │   ├── Scraper.cs           # 3-phase pipeline (scan/notify/recheck)
-│   │   ├── Menu.cs              # interactive TUI: p/r/s/q keys
-│   │   ├── Heartbeat.cs         # writes ScannerControl heartbeat each pass
-│   │   └── Report.cs            # renders findings.htm
-│   └── Blazor/                  # OpenCredentials.Blazor (Blazor Server)
-│       ├── Program.cs           # DI + render pipeline
-│       ├── VizData.cs           # Visualizations data plumbing
-│       ├── Components/
-│       │   ├── Pages/
-│       │   │   ├── Findings.razor          # Tab 1: paginated table
-│       │   │   ├── Visualizations.razor    # Tab 2: charts + KPIs
-│       │   │   └── Settings.razor          # Tab 3: pause/resume + auto-inform
-│       │   ├── CumulativeChart.razor
-│       │   ├── HistogramChart.razor
-│       │   ├── ProviderBarChart.razor
-│       │   └── DonutChart.razor
-│       ├── wwwroot/app.css
-│       └── appsettings.json
-├── v1/                           # Retired Python reference; do not extend or run
-│   ├── DEPRECATED.md             # Why it's retired + old→new file mapping
-│   ├── scraper.py, db.py, patterns.py, disclosure.py, report.py
-│   └── requirements.txt
-├── docs/                         # Codex canonical documentation
-│   ├── BIBLE.md                  # Architecture canon + project Laws (L0)
-│   ├── AMENDMENTS.md             # Append-only change log (L1)
-│   ├── USER_STORIES.md           # Test-cited stories (L2)
-│   ├── BIBLE.digest.md           # GENERATED — never hand-edit
-│   ├── data/
-│   │   ├── exposure_types.json   # ExposureTypes catalog (canon-as-data, L5)
-│   │   └── _schema/exposure_type.schema.json
-│   └── rfc/
-│       └── 0001-verification-harness.md
-├── tools/
-│   ├── codex.ps1                 # digest + doctor CLI for docs/
-│   └── build-readme.ps1          # thin wrapper → shared README→HTML engine
-├── screenshots/                  # UI reference screenshots (Blazor Findings tab, etc.)
-├── findings.db / .db-shm / .db-wal   # legacy SQLite artifact — see below
-├── findings.htm                  # last-generated HTML report snapshot
-├── run.bat                       # double-click launcher for the Blazor UI
-├── OpenCredentials.sln            # Shared + Cli + Blazor
-└── .slnLaunch.json                # multi-project VS launch profiles</code></pre>
-<h2 id="build-test">Build &amp; test</h2>
-<pre><code class="language-powershell"># Build everything (Shared, Cli, Blazor)
-dotnet build OpenCredentials.sln -c Release</code></pre>
-<p><strong>There is currently no automated test project</strong> in this repo (no <code>*.Tests</code> project; confirmed via <code>git ls-files</code>). Every behavior described in <a href="docs/USER<em>STORIES.md">docs/USER</em>STORIES.md</a> is marked <code>🟡</code> (shipped, not test-proven) rather than <code>✅</code> for exactly this reason — closing that gap is the top item on the project's active frontier (<a href="docs/BIBLE.md#OC-§7">docs/BIBLE.md §7</a>, <a href="docs/rfc/0001-verification-harness.md">docs/rfc/0001-verification-harness.md</a>). Until a test project exists, <code>dotnet test</code> has nothing to run.</p>
-<h2 id="running">Running</h2>
+<p>The project began as a Masters-thesis dataset on LLM API key prevalence and now covers the broader credential surface.</p>
+<h3 id="methodology-precedent">Methodology precedent</h3>
+<p>The hash-and-discard method follows Meli, M., McNiece, M. R., and Reaves, B. (2019), How Bad Can It Git? Characterizing Secret Leakage in Public GitHub Repositories, NDSS: <a href="https://www.ndss-symposium.org/ndss-paper/how-bad-can-it-git-characterizing-secret-leakage-in-public-github-repositories/">ndss-symposium.org</a>.</p>
+<h2 id="usage">Usage</h2>
 <h3 id="scanner-cli">Scanner CLI</h3>
 <pre><code class="language-powershell">dotnet build v2/Cli
-# Token resolution is automatic (see GitHub PAT section below).
-# Set GITHUB_TOKEN env var as the simplest override:
+# Token resolution is automatic (see GitHub PAT below). GITHUB_TOKEN is the simplest override:
 $env:GITHUB_TOKEN = "github_pat_..."
 
-# Interactive (default) — scans every 60s in the background; in-terminal
-# menu accepts [p]ause, [r]esume, [s]tatus, [q]uit. Pause/resume route
-# through the same ScannerControl row the Blazor Settings tab uses.
+# Interactive (default): scans every 60s in the background; the menu accepts
+# [p]ause, [r]esume, [s]tatus, [q]uit. Pause/resume use the same ScannerControl
+# row the Blazor Settings tab uses.
 dotnet run --project v2/Cli
 
-# Headless sidecar — no menu, loops indefinitely, obeys ScannerControl:
+# Headless sidecar: no menu, loops indefinitely, obeys ScannerControl
 dotnet run --project v2/Cli -- --headless --loop 5m
 
-# Headless one-shot — single pass and exit (CI-friendly):
+# Headless one-shot: single pass and exit (CI-friendly)
 dotnet run --project v2/Cli -- --headless
 
-# Override the database (defaults to SQL Server LocalDB):
+# Override the database (defaults to SQL Server LocalDB)
 dotnet run --project v2/Cli -- --connection "Server=...;Database=..."
 
-# Opt into PlainTextPassword patterns (high FP rate):
+# Opt into PlainTextPassword patterns (high false-positive rate)
 dotnet run --project v2/Cli -- --include-passwords --loop 1h</code></pre>
-<p>Or via the project's <code>/scan</code> skill (<a href=".claude/skills/scan/SKILL.md"><code>.claude/skills/scan/SKILL.md</code></a>), which launches <code>--headless --loop 60</code> in the background and tails to <code>scan-run.log</code>.</p>
-<p>Useful flags:</p>
-<ul>
-<li><code>--headless</code> — no interactive menu. Loops indefinitely with <code>--loop</code>, otherwise runs a single pass and exits. Pair with <code>--loop</code> for sidecar   use; obeys <code>ScannerControl.RequestedState</code> so the Blazor UI can still   pause it.</li>
-<li><code>--loop INTERVAL</code> — sleeps <code>INTERVAL</code> between passes. Accepts <code>60</code>, <code>30s</code>, <code>5m</code>, <code>1h</code>, <code>1d</code>. Rate limits are absorbed internally   (Retry-After → primary reset → secondary 60s back-off); the loop never   crashes on a 403. Default cadence is 60s when omitted in a long-lived   mode (interactive or <code>--headless</code> without one-shot).</li>
-<li><code>--connection "&lt;conn-string&gt;"</code> — override the SQL Server connection. Also accepts the <code>OPENCREDS_DB</code> env var.</li>
-<li><code>--report PATH</code> — output <code>.htm</code> report path (default <code>findings.htm</code>, regenerated each pass from the full DB).</li>
-<li><code>--max-per-provider N</code> (default 50) — caps per-needle file fetches per pass.</li>
-<li><code>--max-rechecks N</code> (default 100) / <code>--no-recheck</code> — caps the per-run remediation-recheck work.</li>
-<li><code>--max-notices N</code> (default 25) / <code>--no-notify</code> — caps the per-run auto-notify volume. Only fires for types with <code>auto_inform=true</code>.</li>
-<li><code>--include-passwords</code> — opt into the contextual + shape-based PlainTextPassword patterns.</li>
-<li><code>--provider X</code> — narrow to one or more providers (repeatable).</li>
-<li><code>-v</code> / <code>--verbose</code> — extra config logging.</li>
-</ul>
+<p>The project's <code>/scan</code> agent skill (<a href=".claude/skills/scan/SKILL.md">.claude/skills/scan/SKILL.md</a>) launches <code>--headless --loop 60</code> in the background and tails <code>scan-run.log</code>.</p>
+<table><thead><tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr></thead><tbody>
+<tr>
+<td><code>--headless</code></td>
+<td>No interactive menu. Loops with <code>--loop</code>, otherwise runs one pass and exits. Obeys <code>ScannerControl.RequestedState</code>, so the web UI can still pause it.</td>
+</tr>
+<tr>
+<td><code>--loop INTERVAL</code></td>
+<td>Sleep <code>INTERVAL</code> between passes: <code>60</code>, <code>30s</code>, <code>5m</code>, <code>1h</code>, <code>1d</code>. Rate limits are absorbed internally (Retry-After, then primary reset, then a 60s secondary back-off); the loop never crashes on a 403. Defaults to 60s in long-lived modes.</td>
+</tr>
+<tr>
+<td><code>--connection "conn-string"</code></td>
+<td>Override the SQL Server connection. The <code>OPENCREDS_DB</code> env var works too.</td>
+</tr>
+<tr>
+<td><code>--report PATH</code></td>
+<td>Output <code>.htm</code> report path (default <code>findings.htm</code>, regenerated each pass from the full database).</td>
+</tr>
+<tr>
+<td><code>--max-per-provider N</code></td>
+<td>Cap per-needle file fetches per pass (default 50).</td>
+</tr>
+<tr>
+<td><code>--max-rechecks N</code></td>
+<td>Cap remediation rechecks per run (default 100).</td>
+</tr>
+<tr>
+<td><code>--no-recheck</code></td>
+<td>Skip the recheck phase.</td>
+</tr>
+<tr>
+<td><code>--max-notices N</code></td>
+<td>Cap auto-notices per run (default 25). Only fires for types with auto-inform on.</td>
+</tr>
+<tr>
+<td><code>--no-notify</code></td>
+<td>Skip the notify phase.</td>
+</tr>
+<tr>
+<td><code>--include-passwords</code></td>
+<td>Opt into the contextual and shape-based PlainTextPassword patterns.</td>
+</tr>
+<tr>
+<td><code>--provider X</code></td>
+<td>Narrow to one or more providers (repeatable).</td>
+</tr>
+<tr>
+<td><code>-v</code>, <code>--verbose</code></td>
+<td>Extra configuration logging.</td>
+</tr>
+</tbody></table>
 <h3 id="web-ui">Web UI</h3>
 <pre><code class="language-powershell">dotnet run --project v2/Blazor</code></pre>
-<p>Default URLs are <code>https://localhost:50676</code> / <code>http://localhost:50677</code> (see <code>v2/Blazor/Properties/launchSettings.json</code>).</p>
-<p>Three tabs:</p>
+<p>Default URLs are <code>https://localhost:50676</code> and <code>http://localhost:50677</code> (see <code>v2/Blazor/Properties/launchSettings.json</code>).</p>
 <ul>
-<li><strong>Findings</strong> — paginated table of every finding, with columns for exposure type, provider, repo, file, first-seen date, notice   status, remediation status, and check-back count. Per-row <code>Send</code>   button manually files an issue. Live-updates every 3s while the page   is open.</li>
-<li><strong>Visualizations</strong> — KPI strip (Exposed LLM Credentials, Filed Issues, Remediated, % Remediated, Avg Time-to-Remediate, Avg   Check-Backs Until Remediated) plus charts: cumulative findings vs.   notices vs. remediations, time-to-remediate distribution,   check-backs-until-remediated histogram, by-provider breakdown,   remediation-status donut. Same live polling.</li>
-<li><strong>Settings</strong> — scanner pause/resume (writes to the same <code>ScannerControl</code> row the CLI menu uses) plus auto-inform toggles   per exposure type. Heartbeat age from the scanner side is shown so   you can confirm the sidecar is alive.</li>
+<li>Findings. Paginated table of every finding: exposure type, provider, repo, file, first-seen date, notice status, remediation status and check-back count. The per-row Send button files a notice by hand. Live-updates every 3 seconds while open.</li>
+<li>Visualizations. KPI strip (exposed LLM credentials, filed issues, remediated, percent remediated, average time to remediate, average check-backs until remediated) plus charts: cumulative findings vs notices vs remediations, time-to-remediate distribution, check-backs histogram, by-provider breakdown and remediation-status donut. Same live polling.</li>
+<li>Settings. Scanner pause and resume (the same <code>ScannerControl</code> row the CLI menu uses) plus auto-inform toggles per exposure type. The scanner heartbeat age shows whether the sidecar is alive.</li>
 </ul>
-<p>The Web app reads <code>appsettings.json</code> for <code>ConnectionStrings:OpenCredentials</code> (defaults to SQL Server LocalDB <code>OpenCredentials</code>). Override the notice template by setting <code>OpenCredentials:NoticeChannel</code> / <code>NoticeTitle</code> / <code>NoticeBody</code>; otherwise the in-code default in <a href="v2/Shared/NoticeService.cs"><code>NoticeService.cs</code></a> is used.</p>
+<p>The web app reads <code>ConnectionStrings:OpenCredentials</code> from <code>appsettings.json</code> (defaults to the LocalDB <code>OpenCredentials</code> database). Override the notice template with <code>OpenCredentials:NoticeChannel</code>, <code>NoticeTitle</code> and <code>NoticeBody</code>; otherwise the in-code default in <a href="v2/Shared/NoticeService.cs">v2/Shared/NoticeService.cs</a> is used.</p>
 <h3 id="runbat">run.bat</h3>
-<p>A double-click convenience launcher at the repo root:</p>
-<pre><code class="language-bat">@echo off
-start "" /b powershell -NoProfile -ExecutionPolicy Bypass -Command "..."
-dotnet run --project v2\Blazor</code></pre>
-<p>It starts the Blazor app (<code>dotnet run --project v2\Blazor</code>) and, in parallel, a background PowerShell one-liner that polls <code>localhost:50677</code> every 500ms for up to 60 seconds and auto-opens the default browser to <code>http://localhost:50677/</code> the moment the server is listening. This does <strong>not</strong> start the CLI scanner — it only launches the Web UI. Run it from the repo root:</p>
+<p>A double-click launcher at the repo root. It starts the web UI (<code>dotnet run --project v2\Blazor</code>) and, in parallel, a background PowerShell one-liner that polls <code>localhost:50677</code> every 500 ms for up to 60 seconds and opens the default browser the moment the server is listening. It does not start the CLI scanner.</p>
 <pre><code class="language-powershell">.\run.bat</code></pre>
-<h2 id="findingsdb-findingshtm">findings.db &amp; findings.htm</h2>
-<p>Two report/data artifacts live at the repo root and are worth understanding separately, since neither is part of the current v2 persistence path:</p>
-<ul>
-<li><strong><code>findings.db</code> / <code>findings.db-shm</code> / <code>findings.db-wal</code></strong> — a <strong>legacy SQLite database</strong> (confirmed: SQLite 3.x format, essentially empty). It is a holdover from an earlier era when the project persisted to SQLite (see <a href="#version-history-v1--v2">Version history</a>); current v2 persistence is exclusively SQL Server LocalDB, configured in <a href="v2/Shared/Settings.cs"><code>v2/Shared/Settings.cs</code></a>. These files are tracked in git despite <code>findings.htm</code>/<code>findings.json</code> being listed in <code>.gitignore</code> — they predate that rule. Do not treat <code>findings.db</code> as live data.</li>
-<li><strong><code>findings.htm</code></strong> — a static HTML snapshot of the findings report, generated by <a href="v2/Cli/Report.cs"><code>Report.cs</code></a> and regenerated on every scanner pass (path overridable via <code>--report</code>). The copy at the repo root is a <strong>committed historical snapshot</strong> from a prior run, not live data — regenerate it locally by running the CLI. <code>.gitignore</code> marks future regenerations as ignored (<code>findings.htm</code>, <code>findings.json</code>, <code>findings.html</code>), so a fresh run's output won't get accidentally re-committed.</li>
-</ul>
-<p>Neither file is touched by the current SQL Server LocalDB pipeline at runtime except as the CLI's rendered HTML export target (<code>findings.htm</code>).</p>
-<h2 id="screenshots">Screenshots</h2>
-<p>Reference screenshots of the Blazor review UI live under <a href="screenshots/"><code>screenshots/</code></a>:</p>
-<ul>
-<li><code>01.png</code></li>
-<li><code>blazor-findings.png</code></li>
-<li><code>blazor-findings-fixed.png</code></li>
-</ul>
-<h2 id="github-pat">GitHub PAT</h2>
-<p>Token resolution is centralized in <code>GitHubTokenProvider</code>. The CLI and the Web app try sources in this order:</p>
+<h2 id="configuration">Configuration</h2>
+<h3 id="github-pat">GitHub PAT</h3>
+<p>Token resolution is centralised in <code>GitHubTokenProvider</code>. The CLI and the web app try these sources in order:</p>
 <ol>
-<li><code>IConfiguration["MindAttic:Vault:Tokens:github"]</code> — App Service Application Settings or Azure Key Vault (cloud-native).</li>
-<li><code>MindAttic.Vault</code> token store — <code>%APPDATA%\MindAttic\Tokens\tokens.json</code> (<code>{ "github": "github_pat_..." }</code>) — canonical local source.</li>
-<li><code>GITHUB_TOKEN</code> env var.</li>
-<li>Legacy <code>%APPDATA%\MindAttic\OpenCredentials\settings.json</code> <code>{ "github_token": "github_pat_..." }</code> — deprecated; migrate to one    of the above.</li>
+<li><code>IConfiguration["MindAttic:Vault:Tokens:github"]</code>: App Service Application Settings or Azure Key Vault.</li>
+<li>The <code>MindAttic.Vault</code> token store, <code>%APPDATA%\MindAttic\Tokens\tokens.json</code> (<code>{ "github": "github_pat_..." }</code>), the canonical local source.</li>
+<li>The <code>GITHUB_TOKEN</code> env var.</li>
+<li>Legacy <code>%APPDATA%\MindAttic\OpenCredentials\settings.json</code> with a <code>github_token</code> key. Deprecated; migrate to one of the above.</li>
 </ol>
-<p>A fine-grained PAT with public-repo read <strong>and <code>Issues: write</code></strong> is sufficient for the full pipeline. (Issues:write is needed because the Notify pass opens issues; if you only ever scan, public-repo read is enough.)</p>
-<h2 id="rate-limits">Rate limits</h2>
+<p>A fine-grained PAT with public-repo read and <code>Issues: write</code> covers the full pipeline. <code>Issues: write</code> is needed only because the Notify pass opens issues; scanning alone needs just public-repo read.</p>
+<h3 id="rate-limits">Rate limits</h3>
 <p>GitHub authenticated rate limits:</p>
 <ul>
-<li>Primary REST: 5,000 req/hour per token</li>
-<li>Code Search: 30 req/min per token (the binding constraint)</li>
-<li>Issue creation: subject to a stricter content-creation secondary limit</li>
+<li>Primary REST: 5,000 requests per hour per token.</li>
+<li>Code Search: 30 requests per minute per token, the binding constraint.</li>
+<li>Issue creation: a stricter content-creation secondary limit.</li>
 </ul>
-<p>The pipeline's rate-limit handler respects <code>Retry-After</code>, <code>X-RateLimit-Remaining=0</code>/<code>X-RateLimit-Reset</code>, and falls back to a 60s back-off for secondary limits without an explicit hint. The <code>--loop</code> mode is designed to ride this out indefinitely. <strong>Do not rotate multiple PATs to multiply the budget — that violates GitHub's Acceptable Use Policy.</strong> For higher legitimate throughput, apply for GitHub Research Access (academic study).</p>
-<h2 id="documentation-canon">Documentation canon</h2>
-<p>This repo follows the MindAttic <strong>Codex</strong> documentation standard — a layered set of docs where each fact lives in exactly one place:</p>
+<p>The rate-limit handler respects <code>Retry-After</code>, <code>X-RateLimit-Remaining</code> and <code>X-RateLimit-Reset</code>, and falls back to a 60-second back-off for secondary limits with no hint. <code>--loop</code> mode rides this out indefinitely. Do not rotate several PATs to multiply the budget: that violates GitHub's Acceptable Use Policy. For more legitimate throughput, apply for GitHub Research Access.</p>
+<h2 id="version-history">Version history</h2>
+<table><thead><tr>
+<th>Aspect</th>
+<th>v1 (<code>v1/</code>)</th>
+<th>v2 (<code>v2/</code>)</th>
+</tr></thead><tbody>
+<tr>
+<td>Language</td>
+<td>Python</td>
+<td>C# on .NET 9</td>
+</tr>
+<tr>
+<td>Status</td>
+<td>Retired 2026-04-25; reference only, do not run</td>
+<td>Current</td>
+</tr>
+<tr>
+<td>Storage</td>
+<td>SQLite</td>
+<td>SQL Server LocalDB</td>
+</tr>
+<tr>
+<td>Coverage</td>
+<td>LLM keys only</td>
+<td>LLM and cloud API keys, GitHub PATs, payment tokens, DB connection strings, PEM private keys, contextual passwords</td>
+</tr>
+<tr>
+<td>Disclosure</td>
+<td><code>disclosure.py</code></td>
+<td><code>NoticeService</code>: private security advisory first, public issue as fallback</td>
+</tr>
+<tr>
+<td>Reporting</td>
+<td><code>report.py</code> (static HTML)</td>
+<td>Live Blazor Server UI plus <code>Report.cs</code> HTML export</td>
+</tr>
+<tr>
+<td>Front doors</td>
+<td>One scraper process</td>
+<td>CLI (<code>opencreds</code>) and Blazor UI sharing one engine (<code>OpenCredentials.Shared</code>)</td>
+</tr>
+</tbody></table>
+<p>The project's early working title was FractionsOfACent (FOAC). Every identifier (namespaces, database name, CLI binary, settings paths, env vars) was renamed to <code>OpenCredentials</code> or <code>OC</code>; see <a href="docs/AMENDMENTS.md">docs/AMENDMENTS.md</a> (<code>OC-A2</code>) for the rename record and the advisory-first disclosure change.</p>
+<p><code>v1/</code> dates from when the project ran two parallel scrapers (Python and an early C# version) against one SQLite database. It never gained the exposure-type coverage, and notify, recheck and the Blazor UI were C# only from the start. Do not run <code>v1/</code> code; it predates the current schema. <a href="v1/DEPRECATED.md">v1/DEPRECATED.md</a> maps every old file to its replacement.</p>
+<h3 id="findingsdb-and-findingshtm">findings.db and findings.htm</h3>
+<p>Two artifacts at the repo root are not part of the current v2 persistence path:</p>
+<ul>
+<li><code>findings.db</code>, <code>findings.db-shm</code>, <code>findings.db-wal</code>: a legacy, essentially empty SQLite database from the SQLite era. Current persistence is SQL Server LocalDB only, configured in <a href="v2/Shared/Settings.cs">v2/Shared/Settings.cs</a>. These files are tracked in git because they predate the <code>.gitignore</code> rule. Do not treat them as live data.</li>
+<li><code>findings.htm</code>: a committed historical snapshot of the report that <a href="v2/Cli/Report.cs">v2/Cli/Report.cs</a> regenerates on every pass (path set by <code>--report</code>). Regenerate it locally by running the CLI; <code>.gitignore</code> keeps future regenerations out of git.</li>
+</ul>
+<h2 id="project-layout">Project layout</h2>
+<pre><code class="language-text">OpenCredentials/
+├── v2/                           Current implementation (C# / .NET 9)
+│   ├── Shared/                   OpenCredentials.Shared (library)
+│   │   ├── Entities.cs           EF Core entity types
+│   │   ├── OpenCredentialsContext.cs  DbContext + model config
+│   │   ├── Db.cs                 Query/command facade used by both apps
+│   │   ├── Finding.cs
+│   │   ├── Notice.cs             Notice + RemediationCheck records
+│   │   ├── NoticeService.cs      Advisory/issue opening + notice persistence
+│   │   ├── GitHubClient.cs       Search, fetch, refetch, open issue/advisory
+│   │   ├── GitHubTokenProvider.cs  MindAttic.Vault + env + legacy resolver
+│   │   ├── Patterns.cs           ProviderPattern[] + ExposureTypes
+│   │   ├── Settings.cs           LocalDB default + config paths
+│   │   └── Migrations/           EF Core migrations
+│   ├── Cli/                      OpenCredentials.Cli (exe: opencreds)
+│   │   ├── Program.cs            Arg parsing, interactive + headless modes
+│   │   ├── Scraper.cs            3-phase pipeline (scan/notify/recheck)
+│   │   ├── Menu.cs               Interactive menu: p/r/s/q keys
+│   │   ├── Heartbeat.cs          Writes the ScannerControl heartbeat each pass
+│   │   └── Report.cs             Renders findings.htm
+│   └── Blazor/                   OpenCredentials.Blazor (Blazor Server)
+│       ├── Program.cs            DI + render pipeline
+│       ├── VizData.cs            Visualizations data plumbing
+│       ├── Components/
+│       │   ├── Pages/            Findings.razor, Visualizations.razor, Settings.razor
+│       │   └── CumulativeChart, HistogramChart, ProviderBarChart, DonutChart (.razor)
+│       ├── wwwroot/app.css
+│       └── appsettings.json
+├── v1/                           Retired Python reference; do not extend or run
+├── docs/                         Codex canonical documentation (BIBLE, AMENDMENTS,
+│                                 USER_STORIES, digest, data/, rfc/)
+├── tools/                        codex.ps1 (digest + doctor), build-readme.ps1
+├── screenshots/                  internal UI reference captures (not published here)
+├── findings.db / .db-shm / .db-wal   legacy SQLite artifact
+├── findings.htm                  last committed HTML report snapshot
+├── run.bat                       double-click launcher for the web UI
+└── OpenCredentials.sln           Shared + Cli + Blazor</code></pre>
+<h2 id="building">Building</h2>
+<pre><code class="language-powershell">dotnet build OpenCredentials.sln -c Release</code></pre>
+<h2 id="testing">Testing</h2>
+<p>There is no automated test project yet (no <code>*.Tests</code> project in the repo), so <code>dotnet test</code> has nothing to run. Every behaviour in the user stories is marked shipped-but-not-test-proven for that reason. Closing the gap is the top item on the project's active frontier: see <a href="docs/BIBLE.md">docs/BIBLE.md</a> section 7 and <a href="docs/rfc/0001-verification-harness.md">docs/rfc/0001-verification-harness.md</a>.</p>
+<h2 id="limitations">Limitations</h2>
+<ul>
+<li>It does not retrieve, retain or transmit any credential.</li>
+<li>It does not validate credentials against provider APIs.</li>
+<li>It does not scan private repos, commits behind auth, or GitHub Enterprise.</li>
+<li>It does not rotate or cycle PATs to evade rate limits.</li>
+<li>It is not a pentest or offensive-security tool: it does detection, disclosure and measurement only.</li>
+<li>It has no automated tests yet (see <a href="#testing">Testing</a>).</li>
+</ul>
+<h2 id="documentation">Documentation</h2>
+<p>This repo follows the MindAttic Codex documentation standard: each fact lives in exactly one place.</p>
 <table><thead><tr>
 <th>Layer</th>
 <th>File</th>
@@ -417,26 +449,26 @@ dotnet run --project v2\Blazor</code></pre>
 <tr>
 <td>L0</td>
 <td><a href="docs/BIBLE.md">docs/BIBLE.md</a></td>
-<td>What OpenCredentials IS/is NOT, architecture canon, the project Laws (<code>OC-LAW-*</code>), verified build/test state, glossary</td>
+<td>What OpenCredentials is and is not, architecture canon, project Laws (<code>OC-LAW-*</code>), verified build and test state, glossary</td>
 </tr>
 <tr>
 <td>L1</td>
 <td><a href="docs/AMENDMENTS.md">docs/AMENDMENTS.md</a></td>
-<td>Append-only change log (<code>OC-A&lt;n&gt;</code>); an amendment <strong>wins</strong> over the bible</td>
+<td>Append-only change log (<code>OC-A&lt;n&gt;</code>); an amendment wins over the bible</td>
 </tr>
 <tr>
 <td>L2</td>
-<td><a href="docs/USER<em>STORIES.md">docs/USER</em>STORIES.md</a></td>
-<td>Test-cited stories (<code>OC-US-*</code>); <code>✅</code> only when a test or build proves it</td>
+<td><a href="docs/USER_STORIES.md"><code>docs/USER_STORIES.md</code></a></td>
+<td>Test-cited stories (<code>OC-US-*</code>)</td>
 </tr>
 <tr>
 <td>rfc</td>
-<td><a href="docs/rfc/">docs/rfc/</a></td>
-<td>Design notes, e.g. <a href="docs/rfc/0001-verification-harness.md">0001-verification-harness.md</a></td>
+<td><a href="docs/rfc">docs/rfc</a></td>
+<td>Design notes, for example <a href="docs/rfc/0001-verification-harness.md">0001-verification-harness.md</a></td>
 </tr>
 <tr>
 <td>L5</td>
-<td><a href="docs/data/exposure<em>types.json">docs/data/exposure</em>types.json</a></td>
+<td><a href="docs/data/exposure_types.json"><code>docs/data/exposure_types.json</code></a></td>
 <td>Canon-as-data for the <code>ExposureTypes</code> catalog</td>
 </tr>
 <tr>
@@ -445,18 +477,12 @@ dotnet run --project v2\Blazor</code></pre>
 <td>Produced by <code>tools/codex.ps1 digest</code>; never hand-edit</td>
 </tr>
 </tbody></table>
-<p>Org-wide laws live in <code>../MindAttic.HouseRules.md</code> and are inherited by reference from <a href="docs/BIBLE.md#OC-§5">docs/BIBLE.md §5</a> — not restated here.</p>
-<p>Run <code>powershell -NoProfile -File tools/codex.ps1 doctor</code> after editing anything under <code>docs/</code> to validate cross-references, cited paths, and digest freshness.</p>
-<h2 id="what-this-tool-does-not-do">What this tool does NOT do</h2>
-<ul>
-<li>It does not retrieve, retain, or transmit any credential.</li>
-<li>It does not validate credentials against provider APIs.</li>
-<li>It does not scrape private repos, commits behind auth, or GitHub Enterprise.</li>
-<li>It does not rotate or cycle PATs to evade rate limits.</li>
-<li>It is not a pentest or offensive-security tool. It is detection + disclosure + measurement.</li>
-</ul>
+<p>Org-wide laws live in <code>MindAttic.HouseRules.md</code> in the workspace root and are inherited by reference from BIBLE section 5. Agents and contributors: start with <a href="AGENTS.md">AGENTS.md</a>. Run <code>powershell -NoProfile -File tools/codex.ps1 doctor</code> after editing anything under <code>docs/</code>.</p>
+<h2 id="license">License</h2>
+<p>This repository has no LICENSE file; all rights are reserved.</p>
+<p>Part of <a href="https://mindattic.com">MindAttic</a> — see more projects at <a href="https://github.com/mindattic">github.com/mindattic</a>. Related: <a href="https://github.com/mindattic/MindAttic.Vault">MindAttic.Vault</a> (token resolution).</p>
 
-    <p class="codex-footer">Generated 2026-08-14 by the shared MindAttic Codex engine (<code>codex-standard/build-readme.ps1</code>) from <code>README.md</code>. Edit the Markdown source, not this file.</p>
+    <p class="codex-footer">Generated 2026-10-03 by the shared MindAttic Codex engine (<code>codex-standard/build-readme.ps1</code>) from <code>README.md</code>. Edit the Markdown source, not this file.</p>
   </main>
 </div>
 <script>(function(){
