@@ -10,10 +10,10 @@ updated: 2026-10-03
 # OpenCredentials — User Stories
 
 > ✅ done (shipped & tested) · 🟡 partial (shipped, not test-proven) · ⬜ planned.
-> Every ✅ cites the test that proves it. **This repo currently has no automated test project**
-> (`git ls-files` finds no `*.Tests` sources), so no story can be ✅ on the "verified by test"
-> axis yet — shipped behavior is marked 🟡 with the strongest available evidence. Closing the
-> testing gap is the top priority ([RFC 0001](rfc/0001-verification-harness.md), [OC-§7](BIBLE.md#OC-§7)).
+> Every ✅ cites the test that proves it. Tests live in
+> [`v2/Tests/OpenCredentials.Tests.csproj`](../v2/Tests/OpenCredentials.Tests.csproj) (fake GitHub API +
+> in-memory EF; `dotnet test OpenCredentials.sln`). They cover disclosure so far; other shipped behavior
+> is 🟡 with the strongest available evidence ([RFC 0001](rfc/0001-verification-harness.md), [OC-§7](BIBLE.md#OC-§7)).
 
 ## Epic A — Detection
 
@@ -23,10 +23,10 @@ updated: 2026-10-03
 
 ## Epic B — Disclosure
 
-- **OC-US-B1 🟡** As an operator, the scanner never auto-files an issue until I flip a category on, so innocent repos aren't harmed ([OC-LAW-2](BIBLE.md#OC-LAW-2)). *Given all exposure types default `auto_inform=false`, When the notify pass runs, Then it sends nothing.* *(Shipped: `Scraper.SendPendingNoticesAsync` auto-inform gate; seed defaults `AutoInform=false` in [`v2/Shared/Db.cs`](../v2/Shared/Db.cs).)*
-- **OC-US-B2 🟡** As an operator, I can file a courtesy issue on a leaker's repo with the fingerprint (never the secret), so they can rotate. *Given a finding, When I send a notice, Then a GitHub issue is opened and a `Notice` row recorded idempotently.* *(Shipped: `NoticeService.SendAsync` → `GitHubClient.OpenIssueAsync`.)*
-- **OC-US-B3 🟡** As an operator, sending a notice twice for the same finding+channel is a no-op, so I never spam a repo. *Given an existing `sent` notice, When I send again, Then it returns `Skipped=true` without re-opening.* *(Shipped: idempotency check in `NoticeService.SendAsync`.)*
-- **OC-US-B4 ⬜** As an operator, disclosure goes through GitHub's private vulnerability reporting when the repo has it enabled and falls back to a public issue otherwise, so security findings use the private channel first. *Given a repo with private vulnerability reporting, When a notice is sent, Then a `github_advisory` Notice is recorded instead of a public issue.* *(Implemented as `NoticeService.SendVulnerabilityReportAsync` in [`v2/Shared/NoticeService.cs`](../v2/Shared/NoticeService.cs), but neither the CLI notify pass nor the Findings page calls it yet.)*
+- **OC-US-B1 ✅** As an operator, the scanner never auto-discloses until I flip a category on, so innocent repos aren't harmed ([OC-LAW-2](BIBLE.md#OC-LAW-2)). *Given all exposure types default `auto_inform=false`, When the notify pass runs, Then it sends nothing.* *(Shipped: `Scraper.SendPendingNoticesAsync` auto-inform gate; seed defaults `AutoInform=false` in [`v2/Shared/Db.cs`](../v2/Shared/Db.cs). verified by `Notify_pass_sends_nothing_while_every_type_is_auto_inform_off`.)*
+- **OC-US-B2 ✅** As an operator, I can file a courtesy issue on a leaker's repo with the fingerprint (never the secret) when it has no private vulnerability reporting, so they can rotate. *Given a finding on a repo without private reporting, When I send a notice, Then a GitHub issue is opened and a `github_issue` Notice recorded.* *(Shipped: `NoticeService.SendAsync` → `GitHubClient.OpenIssueAsync`. verified by `Repo_without_private_reporting_falls_back_to_public_issue`; also `Notify_pass_falls_back_to_public_issue_when_private_reporting_is_off`.)*
+- **OC-US-B3 ✅** As an operator, sending a notice twice for the same finding is a no-op on either channel, so I never spam a repo. *Given an existing `sent` notice, When I send again, Then it returns `Skipped=true` without calling GitHub.* *(Shipped: idempotency checks in `NoticeService.SendAsync` and `SendVulnerabilityReportAsync`. verified by `Sending_an_issue_twice_is_a_no_op`; also `Finding_already_disclosed_by_issue_is_skipped_without_any_GitHub_call`, `Finding_already_disclosed_by_advisory_is_skipped_without_any_GitHub_call`.)*
+- **OC-US-B4 ✅** As an operator, disclosure goes through GitHub's private vulnerability reporting when the repo has it enabled and falls back to a public issue otherwise, so security findings use the private channel first. *Given a repo with private vulnerability reporting, When a notice is sent from the CLI notify pass or the Findings page, Then a `github_advisory` Notice is recorded instead of a public issue; a transient advisory failure is recorded as failed and never goes public.* *(Shipped: `NoticeService.SendVulnerabilityReportAsync` in [`v2/Shared/NoticeService.cs`](../v2/Shared/NoticeService.cs), called by `Scraper.SendPendingNoticesAsync` and the Findings page Send/Retry button. verified by `Repo_with_private_reporting_gets_a_private_advisory_and_no_public_issue`; also `Transient_advisory_failure_never_goes_public`, `Rate_limited_403_is_a_transient_failure_not_unavailable`, `Notify_pass_discloses_through_private_advisory_first`, `Send_button_files_a_private_advisory_not_a_public_issue`.)*
 
 ## Epic C — Remediation tracking
 
@@ -49,11 +49,7 @@ updated: 2026-10-03
 
 Dependency-ordered toward a test-proven, IRB-defensible pipeline:
 
-1. ⬜ **Stand up a test project** (`OpenCredentials.Tests`) — unblocks every ✅. ([RFC 0001](rfc/0001-verification-harness.md))
-2. ⬜ **Non-retention test** proving `Scraper.Fingerprint`/`ScanContent` emit only fingerprints (OC-US-A2 → ✅).
-3. ⬜ **Pattern-matching tests** with synthetic-key fixtures per provider (OC-US-A1 → ✅).
-4. ⬜ **Auto-inform gate test** proving the notify pass is a no-op when all types are off (OC-US-B1 → ✅).
-5. ⬜ **Notice idempotency test** (OC-US-B3 → ✅).
-6. ⬜ **Remediation status-transition test** over a fake `GitHubClient` (OC-US-C1 → ✅).
-7. ⬜ **Concurrency test** for `ClaimScan` race (OC-US-E3 → ✅).
-8. ⬜ **Wire advisory-first disclosure** into the notify pass and the Findings Send button (OC-US-B4).
+1. ⬜ **Non-retention test** proving `Scraper.Fingerprint`/`ScanContent` emit only fingerprints (OC-US-A2 → ✅).
+2. ⬜ **Pattern-matching tests** with synthetic-key fixtures per provider (OC-US-A1 → ✅).
+3. ⬜ **Remediation status-transition test** over a fake `GitHubClient` (OC-US-C1 → ✅).
+4. ⬜ **Concurrency test** for `ClaimScan` race (OC-US-E3 → ✅).

@@ -11,7 +11,7 @@ Public-service credential-leak detection for GitHub: find exposed API keys and c
    Code Search                                       (every run)
    + Contents      └─ writes findings           └─ writes
                                                    remediation_checks
-   leaker repo  ◄─── courtesy issue (only when auto-inform is on)
+   leaker repo  ◄─── private advisory, else courtesy issue (only when auto-inform is on)
 
    raw match ─► SHA-256 + scheme prefix ─► discarded inside one function
 ```
@@ -36,8 +36,9 @@ OpenCredentials runs on your own machine against public GitHub; there is no host
 
 ### Notify
 
-- `NoticeService.SendAsync` opens a public courtesy issue on the leaker's own repo and records a `Notice` row; sending twice for the same finding is a no-op.
-- `NoticeService.SendVulnerabilityReportAsync` (private security advisory first, public issue as fallback) exists in the library but neither the CLI nor the web UI calls it yet.
+- Disclosure is advisory-first. `NoticeService.SendVulnerabilityReportAsync`, which both the CLI notify pass and the web UI's Send/Retry button call, first files a private vulnerability report (`POST /repos/{owner}/{repo}/security-advisories/reports`) and records a `github_advisory` notice.
+- Only when GitHub says private vulnerability reporting is unavailable for the repo (404, 403 or 422) does it fall back to `NoticeService.SendAsync`, which opens a public courtesy issue and records a `github_issue` notice. Any other advisory failure (server error, rate limit, network) is recorded as a failed advisory and retried privately on the next pass or Retry; it never falls back to a public issue.
+- A finding is disclosed once: if either channel already has a `sent` notice, sending again is a no-op.
 - Fires automatically only for exposure types switched to auto-inform; any finding can also be sent by hand from the web UI.
 
 ### Recheck
@@ -75,7 +76,7 @@ The CLI writes findings to the LocalDB `OpenCredentials` database and regenerate
 Each invocation runs three phases in order and stores everything in the SQL Server LocalDB `OpenCredentials` database (override with `--connection` or the `OPENCREDS_DB` env var):
 
 1. Scan. Query GitHub Code Search for each pattern's needle, fetch matching files, run the regexes, and store metadata plus the SHA-256 of each match.
-2. Notify. For exposure types with auto-inform on, open a courtesy issue for unnotified findings, up to `--max-notices` per run.
+2. Notify. For exposure types with auto-inform on, disclose unnotified findings (private advisory first, courtesy issue as fallback), up to `--max-notices` per run.
 3. Recheck. Re-fetch earlier findings and record whether the hash is still present, up to `--max-rechecks` per run.
 
 The default mode loops every 60 seconds with an interactive menu; `--headless` drops the menu and pairs with `--loop` for daemon or sidecar use.
@@ -120,7 +121,7 @@ Every type defaults to auto-inform off, so the CLI's auto-notify pass does nothi
 - Scope. Public repositories indexed by GitHub Code Search only. No private data, no auth-walled endpoints, no cloning, no execution of repo code.
 - Non-retention is enforced in code. The raw regex match is bound to a local variable, used to compute SHA-256 and a short scheme prefix, then dropped. It is never written to disk, logged, serialized or returned from a function. See `ScanContent` in [v2/Cli/Scraper.cs](v2/Cli/Scraper.cs).
 - No validation. The tool never calls provider APIs with detected credentials. Liveness is inferred from the recheck pass (does the hash still appear in the file?), not from authenticated probes.
-- Disclosure. The Notify pass and the web UI's Send button open a public issue on the leaker's own repo. The body is Markdown, links to the offending file, and includes only the SHA-256 fingerprint and scheme prefix. The issue mentions the repo owner so GitHub emails them.
+- Disclosure. The Notify pass and the web UI's Send button file a private vulnerability report on the leaker's repo when it has private vulnerability reporting enabled, and otherwise open a public courtesy issue. The body is Markdown, links to the offending file, and includes only the SHA-256 fingerprint and scheme prefix. The issue fallback mentions the repo owner so GitHub emails them.
 - IRB note. Opening an issue or advisory on someone's repo is a third-party disclosure act; for a thesis committee, document it in your IRB submission. The `Notices` and `RemediationChecks` tables keep the audit trail of what was sent, when, to whom, and what happened next.
 
 The project began as a Masters-thesis dataset on LLM API key prevalence and now covers the broader credential surface.
@@ -206,7 +207,7 @@ Token resolution is centralised in `GitHubTokenProvider`. The CLI and the web ap
 3. The `GITHUB_TOKEN` env var.
 4. Legacy `%APPDATA%\MindAttic\OpenCredentials\settings.json` with a `github_token` key. Deprecated; migrate to one of the above.
 
-A fine-grained PAT with public-repo read and `Issues: write` covers the full pipeline. `Issues: write` is needed only because the Notify pass opens issues; scanning alone needs just public-repo read.
+Scanning needs only public-repo read. The Notify pass additionally needs a token that may file private vulnerability reports and open issues on public repositories.
 
 ### Rate limits
 
@@ -214,7 +215,7 @@ GitHub authenticated rate limits:
 
 - Primary REST: 5,000 requests per hour per token.
 - Code Search: 30 requests per minute per token, the binding constraint.
-- Issue creation: a stricter content-creation secondary limit.
+- Issue and advisory-report creation: a stricter content-creation secondary limit.
 
 The rate-limit handler respects `Retry-After`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`, and falls back to a 60-second back-off for secondary limits with no hint. `--loop` mode rides this out indefinitely. Do not rotate several PATs to multiply the budget: that violates GitHub's Acceptable Use Policy. For more legitimate throughput, apply for GitHub Research Access.
 
@@ -226,7 +227,7 @@ The rate-limit handler respects `Retry-After`, `X-RateLimit-Remaining` and `X-Ra
 | Status | Reference only; do not run | Current |
 | Storage | SQLite | SQL Server LocalDB |
 | Coverage | LLM keys only | LLM and cloud API keys, GitHub PATs, payment tokens, DB connection strings, PEM private keys, contextual passwords |
-| Disclosure | `disclosure.py` | `NoticeService`: public courtesy issue (advisory-first method present but not wired) |
+| Disclosure | `disclosure.py` | `NoticeService`: private vulnerability report first, public courtesy issue as fallback |
 | Reporting | `report.py` (static HTML) | Live Blazor Server UI plus `Report.cs` HTML export |
 | Front doors | One scraper process | CLI (`opencreds`) and Blazor UI sharing one engine (`OpenCredentials.Shared`) |
 
@@ -250,8 +251,8 @@ OpenCredentials/
 │   │   ├── Db.cs                 Query/command facade used by both apps
 │   │   ├── Finding.cs
 │   │   ├── Notice.cs             Notice + RemediationCheck records
-│   │   ├── NoticeService.cs      Issue opening (+ unwired advisory path) + notice persistence
-│   │   ├── GitHubClient.cs       Search, fetch, refetch, open issue/advisory
+│   │   ├── NoticeService.cs      Advisory-first disclosure, issue fallback, notice persistence
+│   │   ├── GitHubClient.cs       Search, fetch, refetch, open issue, file private vulnerability report
 │   │   ├── GitHubTokenProvider.cs  MindAttic.Vault + env + legacy resolver
 │   │   ├── Patterns.cs           ProviderPattern[] + ExposureTypes
 │   │   ├── Settings.cs           LocalDB default + config paths
@@ -262,14 +263,15 @@ OpenCredentials/
 │   │   ├── Menu.cs               Interactive menu: p/r/s/q keys
 │   │   ├── Heartbeat.cs          Writes the ScannerControl heartbeat each pass
 │   │   └── Report.cs             Renders findings.htm
-│   └── Blazor/                   OpenCredentials.Blazor (Blazor Server)
-│       ├── Program.cs            DI + render pipeline
-│       ├── VizData.cs            Visualizations data plumbing
-│       ├── Components/
-│       │   ├── Pages/            Findings.razor, Visualizations.razor, Settings.razor
-│       │   └── CumulativeChart, HistogramChart, ProviderBarChart, DonutChart (.razor)
-│       ├── wwwroot/app.css
-│       └── appsettings.json
+│   ├── Blazor/                   OpenCredentials.Blazor (Blazor Server)
+│   │   ├── Program.cs            DI + render pipeline
+│   │   ├── VizData.cs            Visualizations data plumbing
+│   │   ├── Components/
+│   │   │   ├── Pages/            Findings.razor, Visualizations.razor, Settings.razor
+│   │   │   └── CumulativeChart, HistogramChart, ProviderBarChart, DonutChart (.razor)
+│   │   ├── wwwroot/app.css
+│   │   └── appsettings.json
+│   └── Tests/                    OpenCredentials.Tests (xUnit + bUnit; fake GitHub, in-memory EF)
 ├── v1/                           Python reference only; do not extend or run
 ├── docs/                         Codex canonical documentation (BIBLE, AMENDMENTS,
 │                                 USER_STORIES, digest, data/, rfc/)
@@ -289,7 +291,11 @@ dotnet build OpenCredentials.sln -c Release
 
 ## Testing
 
-There is no automated test project yet (no `*.Tests` project in the repo), so `dotnet test` has nothing to run. Every behaviour in the user stories is marked shipped-but-not-test-proven for that reason. Closing the gap is the top item on the project's active frontier: see [docs/BIBLE.md](docs/BIBLE.md) section 7 and [docs/rfc/0001-verification-harness.md](docs/rfc/0001-verification-harness.md).
+```powershell
+dotnet test OpenCredentials.sln
+```
+
+`v2/Tests/OpenCredentials.Tests` (xUnit + bUnit) runs against a fake GitHub API (an in-process `HttpMessageHandler`) and an in-memory EF Core database, so no test touches GitHub or LocalDB. It covers disclosure: advisory-first routing in `NoticeService`, the CLI notify pass and the Findings page Send button, the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency are not yet test-proven: see [docs/BIBLE.md](docs/BIBLE.md) section 7 and [docs/rfc/0001-verification-harness.md](docs/rfc/0001-verification-harness.md).
 
 ## Limitations
 
@@ -298,7 +304,7 @@ There is no automated test project yet (no `*.Tests` project in the repo), so `d
 - It does not scan private repos, commits behind auth, or GitHub Enterprise.
 - It does not rotate or cycle PATs to evade rate limits.
 - It is not a pentest or offensive-security tool: it does detection, disclosure and measurement only.
-- It has no automated tests yet (see [Testing](#testing)).
+- Its automated tests cover disclosure only so far (see [Testing](#testing)).
 
 ## Documentation
 

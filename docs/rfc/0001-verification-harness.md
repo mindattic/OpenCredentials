@@ -3,15 +3,15 @@ codex: 1
 project: OpenCredentials
 code: OC
 layer: rfc
-status: planned
-updated: 2026-06-07
+status: in-progress
+updated: 2026-10-03
 ---
 
 # RFC 0001 — A verification harness for the non-retention and disclosure invariants
 
 ## Problem
 
-OpenCredentials's most important properties — **non-retention of secrets** ([OC-LAW-1](../BIBLE.md#OC-LAW-1)), **review-before-disclosure** ([OC-LAW-2](../BIBLE.md#OC-LAW-2)), and **race-safe concurrency** ([OC-LAW-5](../BIBLE.md#OC-LAW-5)) — are currently guaranteed only by code structure and reviewer discipline. There is **no automated test project** in the repo. That means no `✅` story exists, and a refactor could silently regress the IRB-defensible guarantees the project rests on.
+OpenCredentials's most important properties — **non-retention of secrets** ([OC-LAW-1](../BIBLE.md#OC-LAW-1)), **review-before-disclosure** ([OC-LAW-2](../BIBLE.md#OC-LAW-2)), and **race-safe concurrency** ([OC-LAW-5](../BIBLE.md#OC-LAW-5)) — were guaranteed only by code structure and reviewer discipline. `OpenCredentials.Tests` now proves the disclosure stories (auto-inform gate, idempotency, advisory-first routing); non-retention, pattern matching, remediation and concurrency are still unproven, so a refactor could silently regress those guarantees.
 
 ## Options compared
 
@@ -31,10 +31,10 @@ Pursue **Option 3**. Add a `OpenCredentials.Tests` project that fakes the GitHub
 
 ## Phased plan (with risk)
 
-1. **Seam (low risk):** extract an interface for the GitHub boundary so tests can inject a fake. *Risk: touches `Shared` source — separate PR, separate review.*
-2. **Harness (low risk):** stand up `OpenCredentials.Tests`, wire LocalDB/in-memory EF.
-3. **Invariant tests (medium):** non-retention + auto-inform gate first; these protect the laws.
-4. **Coverage (medium):** patterns, idempotency, remediation, concurrency.
+1. **Seam — done:** `GitHubClient` has an internal constructor taking an `HttpMessageHandler`; tests inject a fake GitHub API.
+2. **Harness — done:** [`v2/Tests/OpenCredentials.Tests.csproj`](../../v2/Tests/OpenCredentials.Tests.csproj) (xUnit + bUnit, in-memory EF).
+3. **Invariant tests (medium):** auto-inform gate done; non-retention next.
+4. **Coverage (medium):** idempotency done; patterns, remediation, concurrency remain.
 
 ## Graduates into
 

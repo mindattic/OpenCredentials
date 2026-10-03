@@ -14,11 +14,11 @@ updated: 2026-10-03
 
 ## 1. The one sentence {#OC-§1}
 
-OpenCredentials is a public-service credential-leak pipeline: it watches public GitHub for exposed credentials, fingerprints each match (SHA-256) **without ever retaining the secret**, optionally files a courtesy issue on the leaker's own repo, and tracks whether the leak gets remediated — a CLI scanner and a Blazor Server review UI sharing one SQL Server LocalDB.
+OpenCredentials is a public-service credential-leak pipeline: it watches public GitHub for exposed credentials, fingerprints each match (SHA-256) **without ever retaining the secret**, optionally discloses it to the leaker's own repo (a private vulnerability report, else a courtesy issue), and tracks whether the leak gets remediated — a CLI scanner and a Blazor Server review UI sharing one SQL Server LocalDB.
 
 ## 2. The product promise {#OC-§2}
 
-- **Detection + disclosure + measurement — never exploitation.** The system records metadata only. It detects leaks, optionally discloses them to the leaker via a GitHub issue, and measures remediation over time.
+- **Detection + disclosure + measurement — never exploitation.** The system records metadata only. It detects leaks, optionally discloses them to the leaker — privately via GitHub private vulnerability reporting when the repo supports it, otherwise via a public courtesy issue — and measures remediation over time.
 - **Non-retention at the code level.** A raw regex match lives in one local variable, is hashed to SHA-256 + a short scheme prefix, and goes out of scope. It is never written to disk, logged, serialized, or returned from a function. See [`§5 LAW-1`](#OC-LAW-1).
 - **Review precedes disclosure.** Every exposure type defaults to `auto_inform = false`. The auto-notify pass does nothing until a human flips a category on in the Web UI. See [`§5 LAW-2`](#OC-LAW-2).
 - **The research artifact and the operator are the same binary.** Aggregate measurements (leak rate per provider, time-to-remediate, notice-to-remediation conversion) fall out of the pipeline for free.
@@ -43,7 +43,7 @@ OpenCredentials is a public-service credential-leak pipeline: it watches public 
    Code Search                                       (every run)
    + Contents      └─ writes Findings           └─ writes
                                                    RemediationChecks
-   leaker repo  ◄─── auto-issue (only when auto_inform=true)
+   leaker repo  ◄─── private advisory, else issue (only when auto_inform=true)
 
    ┌─────────────┐        ┌──────────────────────────────┐        ┌──────────────┐
    │ Cli         │        │ Shared (library)             │        │ Blazor       │
@@ -74,9 +74,9 @@ EF entities are defined in [`v2/Shared/Entities.cs`](../v2/Shared/Entities.cs); 
 ### 4.3 Key services (VERBS)
 - **`Scraper.RunAsync`** ([`v2/Cli/Scraper.cs`](../v2/Cli/Scraper.cs)) — the 3-phase pipeline: scan (search → claim → fetch → `ScanContent` → upsert), `SendPendingNoticesAsync` (gated by auto-inform), `RecheckRemediationsAsync`. Writes the HTML report each pass.
 - **`Db`** ([`v2/Shared/Db.cs`](../v2/Shared/Db.cs)) — persistence facade over `IDbContextFactory<OpenCredentialsContext>`; atomic `ClaimScan`/`ReleaseScan`, `UpsertFinding`, notice/recheck reads & writes, exposure-type auto-inform get/set, scanner control + heartbeat.
-- **`NoticeService.SendAsync`** ([`v2/Shared/NoticeService.cs`](../v2/Shared/NoticeService.cs)) — idempotent issue-open + notice persistence (channel `github_issue`); renders the courtesy template and calls `GitHubClient.OpenIssueAsync`. This is the path both front doors use (the CLI notify pass and the Findings page Send button).
-- **`NoticeService.SendVulnerabilityReportAsync`** — advisory-first disclosure: tries `GitHubClient.TryOpenSecurityAdvisoryAsync` (`POST /repos/{owner}/{repo}/security-advisories`, private vulnerability reporting); a 404/403/422 means the feature is unavailable and it falls back to `SendAsync`. Records channel `github_advisory` when the advisory path is taken. Implemented in `Shared` but not yet called by the CLI or the Blazor UI.
-- **`GitHubClient`** ([`v2/Shared/GitHubClient.cs`](../v2/Shared/GitHubClient.cs)) — `SearchCodeAsync`, `FetchFileAsync`, `RefetchAsync`, `OpenIssueAsync`, `TryOpenSecurityAdvisoryAsync`; all rate-limit handling funnels through `HandleRateLimitAsync`.
+- **`NoticeService.SendVulnerabilityReportAsync`** ([`v2/Shared/NoticeService.cs`](../v2/Shared/NoticeService.cs)) — the disclosure path both front doors use (the CLI notify pass and the Findings page Send/Retry button). Advisory-first: skips if either channel already has a `sent` notice; otherwise calls `GitHubClient.TryOpenSecurityAdvisoryAsync` (`POST /repos/{owner}/{repo}/security-advisories/reports`, private vulnerability reporting) and records channel `github_advisory`. Only a 404/403/422 (feature unavailable; a 403 carrying rate-limit headers does not count) falls back to `SendAsync`. Any other advisory failure is recorded as a `failed` advisory and is retried privately — it never falls back to a public issue.
+- **`NoticeService.SendAsync`** — the public-issue fallback: idempotent issue-open + notice persistence (channel `github_issue`); renders the courtesy template and calls `GitHubClient.OpenIssueAsync`.
+- **`GitHubClient`** ([`v2/Shared/GitHubClient.cs`](../v2/Shared/GitHubClient.cs)) — `SearchCodeAsync`, `FetchFileAsync`, `RefetchAsync`, `OpenIssueAsync`, `TryOpenSecurityAdvisoryAsync`; all rate-limit handling funnels through `HandleRateLimitAsync`. An internal constructor taking an `HttpMessageHandler` is the test seam for a fake GitHub API.
 - **`GitHubTokenProvider`** ([`v2/Shared/GitHubTokenProvider.cs`](../v2/Shared/GitHubTokenProvider.cs)) — resolves the PAT via `MindAttic.Vault` → User Secrets → `GITHUB_TOKEN` → legacy settings.json.
 
 ## 5. The Laws {#OC-§5}
@@ -87,7 +87,7 @@ EF entities are defined in [`v2/Shared/Entities.cs`](../v2/Shared/Entities.cs); 
 The raw credential match exists in exactly one local variable, is reduced to `(SHA-256, 16-char prefix, length)` by `Scraper.Fingerprint`, and is dropped (`rawKey = null!`) before scope exit. It is never written to disk, logged, serialized, returned from a function, or persisted. This is the project's prime directive and an IRB-defensible property. (Extends org-wide secret hygiene — [see HOUSE-LAW-3](../../MindAttic.HouseRules.md#HOUSE-LAW-3).)
 
 ### {#OC-LAW-2} OC-LAW-2 — Disclosure is opt-in per exposure type; review precedes action
-Every `ExposureType.AutoInform` defaults to `false`. The auto-notify pass (`Scraper.SendPendingNoticesAsync`) files an issue ONLY for types a human has flipped on in the Web UI. Filing a public issue against an innocent repo is reputational harm, so review-then-act is the safe default. This is a project-specific specialization of [HOUSE-LAW-2 (soft-disable / reversible by default)](../../MindAttic.HouseRules.md#HOUSE-LAW-2).
+Every `ExposureType.AutoInform` defaults to `false`. The auto-notify pass (`Scraper.SendPendingNoticesAsync`) discloses ONLY for types a human has flipped on in the Web UI. Filing a public issue against an innocent repo is reputational harm, so review-then-act is the safe default. This is a project-specific specialization of [HOUSE-LAW-2 (soft-disable / reversible by default)](../../MindAttic.HouseRules.md#HOUSE-LAW-2).
 
 ### {#OC-LAW-3} OC-LAW-3 — The scanner never crashes on a rate limit
 All GitHub rate-limit handling funnels through `GitHubClient.HandleRateLimitAsync` (honors `Retry-After`, `X-RateLimit-Remaining=0`/`Reset`, falls back to a 60s secondary back-off). The `--loop` mode rides this out indefinitely; an unexpected pass failure is logged and the loop continues. Indefinite, self-pacing operation is the contract.
@@ -105,15 +105,15 @@ The GitHub PAT is resolved by `GitHubTokenProvider` via the `MindAttic.Vault` co
 
 Build/test evidence recorded 2026-10-03 (dotnet SDK 10.0.400, TFM net9.0, Windows PowerShell 5.1):
 
-- **Build: GREEN.** `dotnet build OpenCredentials.sln -c Release` → **Build succeeded, 0 Warning(s), 0 Error(s)** (all three projects: `Shared` → `net9.0/OpenCredentials.Shared.dll`, `Cli` → `net9.0/opencreds.dll`, `Blazor` → `net9.0/OpenCredentials.Blazor.dll`).
-- **Tests: NONE.** No automated test project exists in the repo (no `*.Tests` project; `git ls-files` finds no test sources). Every story in [USER_STORIES.md](USER_STORIES.md) is therefore `🟡` at best on the "verified by test" axis. Closing this is the #1 frontier item ([§7](#OC-§7), [RFC 0001](rfc/0001-verification-harness.md)).
+- **Build: GREEN.** `dotnet build OpenCredentials.sln -c Release` → **Build succeeded, 0 Warning(s), 0 Error(s)** (all four projects: `Shared` → `net9.0/OpenCredentials.Shared.dll`, `Cli` → `net9.0/opencreds.dll`, `Blazor` → `net9.0/OpenCredentials.Blazor.dll`, `Tests` → `net9.0/OpenCredentials.Tests.dll`).
+- **Tests: 14 passed, 0 failed.** `dotnet test OpenCredentials.sln` runs [`v2/Tests/OpenCredentials.Tests.csproj`](../v2/Tests/OpenCredentials.Tests.csproj) (xUnit + bUnit) against a fake GitHub API (in-process `HttpMessageHandler`) and an in-memory EF Core database — no network, no LocalDB. Coverage is disclosure only: advisory-first routing (`NoticeServiceDisclosureTests`, `NotifyPassTests`, `FindingsPageTests`), the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency stories remain `🟡`.
 - **Runtime evidence:** the `--headless` one-shot CLI mode is runnable and CI-shaped (exits non-zero on a failed pass). Persistence is SQL Server LocalDB; the tracked root files `findings.db*` (SQLite) and `findings.htm` are not read by v2.
 
 > `tools/codex.ps1 doctor` checks that every file path cited in this bible exists on disk.
 
 ## 7. Active frontier {#OC-§7}
 
-- **Testing gap (highest priority):** there is no automated test suite. The non-retention guarantee ([LAW-1](#OC-LAW-1)), the auto-inform gate ([LAW-2](#OC-LAW-2)), and concurrency safety ([LAW-5](#OC-LAW-5)) are all asserted by code structure but not proven by tests. See [RFC 0001](rfc/0001-verification-harness.md) and the priority backlog in [USER_STORIES.md](USER_STORIES.md).
+- **Testing gap (highest priority):** the test suite covers disclosure only. The non-retention guarantee ([LAW-1](#OC-LAW-1)) and concurrency safety ([LAW-5](#OC-LAW-5)) are asserted by code structure but not proven by tests. See [RFC 0001](rfc/0001-verification-harness.md) and the priority backlog in [USER_STORIES.md](USER_STORIES.md).
 - **Open epics:** see Epics in [USER_STORIES.md](USER_STORIES.md) — Detection, Disclosure, Remediation tracking, Review UI, Operations.
 
 ## 8. Quality bar {#OC-§8}
@@ -133,7 +133,7 @@ A feature is **done** (`✅`) only when:
 - **Fingerprint** — `(SHA-256 hex, 16-char scheme prefix, length)` computed from a raw match; the only thing persisted.
 - **Notice** — a disclosure sent to the leaker's repo: a courtesy GitHub issue (`github_issue`) or a private security advisory (`github_advisory`).
 - **Remediation check** — a re-fetch + re-hash that determines whether a previously-found leak is still present.
-- **auto_inform** — per-exposure-type boolean gate; when `false` (default) the CLI never auto-files an issue for that type.
+- **auto_inform** — per-exposure-type boolean gate; when `false` (default) the CLI never auto-discloses findings of that type.
 - **ScannerControl** — the single DB row that lets the Web UI pause/resume any running scanner.
 - **Heartbeat** — periodic `LastHeartbeatUtc` + `CurrentLabel` write so the UI can show scanner liveness.
 - **Headless / one-shot** — `--headless` with no `--loop`: a single CI-friendly pass that exits non-zero on failure.

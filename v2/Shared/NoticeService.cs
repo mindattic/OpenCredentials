@@ -48,10 +48,11 @@ public sealed record NoticeSendResult(
     bool Skipped);
 
 /// <summary>
-/// Opens a GitHub issue on the leaker's repo and records a notices row.
-/// Idempotent on (finding, channel): if a notice already exists, returns
-/// Skipped=true without re-opening. Both the CLI scraper and the Blazor
-/// 'Retry' button call this same path.
+/// Discloses a finding to the leaker's repo and records a notices row.
+/// Front doors (CLI notify pass, Blazor Send/Retry) call
+/// <see cref="SendVulnerabilityReportAsync"/>, which is advisory-first and
+/// falls back to the public courtesy issue (<see cref="SendAsync"/>) only
+/// when private vulnerability reporting is unavailable.
 /// </summary>
 public sealed class NoticeService
 {
@@ -105,58 +106,88 @@ public sealed class NoticeService
             result.Ok, result.Number, result.HtmlUrl, result.Error, Skipped: false);
     }
 
+    public const string AdvisoryChannel = "github_advisory";
+
     /// <summary>
-    /// Responsible-disclosure path: tries GitHub's private vulnerability
-    /// reporting API first (preferred — private, no public noise); falls back
-    /// to a public GitHub issue if the repo does not have the feature enabled.
-    /// Records which channel was actually used in the Notices table.
-    /// Idempotent: if either channel already has a "sent" row, returns Skipped.
+    /// The disclosure path both front doors use (CLI notify pass and the
+    /// Findings page Send/Retry button). Advisory-first:
+    /// <list type="number">
+    /// <item>If a <c>sent</c> notice already exists on either channel
+    ///   (advisory or issue), returns Skipped — a finding is disclosed once.</item>
+    /// <item>Tries GitHub private vulnerability reporting
+    ///   (<see cref="GitHubClient.TryOpenSecurityAdvisoryAsync"/>). On success,
+    ///   records a <c>github_advisory</c> notice.</item>
+    /// <item>Only when GitHub says private reporting is unavailable for the repo
+    ///   (the client returns null for 404/403/422) does it fall back to the
+    ///   public courtesy issue (<see cref="SendAsync"/>).</item>
+    /// <item>Any other advisory failure (5xx, rate limit, network) is recorded
+    ///   as a <c>failed</c> advisory notice and returned as a failure — it does
+    ///   NOT fall back to a public issue, so a transient error never turns a
+    ///   private disclosure into a public one. The next pass / Retry tries the
+    ///   private channel again.</item>
+    /// </list>
     /// </summary>
     public async Task<NoticeSendResult> SendVulnerabilityReportAsync(
         Finding finding, CancellationToken ct = default)
     {
-        const string advisoryChannel = "github_advisory";
-
-        // Return immediately if we already sent via advisory channel.
         var existingAdvisory = _db.GetNotice(
-            finding.KeySha256, finding.RepoFullName, finding.FilePath, advisoryChannel);
+            finding.KeySha256, finding.RepoFullName, finding.FilePath, AdvisoryChannel);
         if (existingAdvisory is { Status: "sent" })
         {
             return new NoticeSendResult(
                 true, null, existingAdvisory.IssueHtmlUrl, null, Skipped: true);
         }
+        var existingIssue = _db.GetNotice(
+            finding.KeySha256, finding.RepoFullName, finding.FilePath, _config.Channel);
+        if (existingIssue is { Status: "sent" })
+        {
+            return new NoticeSendResult(
+                true, existingIssue.IssueNumber, existingIssue.IssueHtmlUrl, null, Skipped: true);
+        }
 
         var summary = Render(_config.Title, finding);
         var description = Render(_config.Body, finding);
 
-        var advisory = await _client.TryOpenSecurityAdvisoryAsync(
-            finding.RepoFullName, summary, description, ct);
-
-        if (advisory is not null)
+        AdvisoryResult? advisory;
+        try
         {
-            // Advisory API accepted the report (private disclosure).
-            var notice = new Notice(
-                KeySha256: finding.KeySha256,
-                RepoFullName: finding.RepoFullName,
-                FilePath: finding.FilePath,
-                Channel: advisoryChannel,
-                IssueNumber: null,
-                IssueHtmlUrl: advisory.HtmlUrl,
-                SentAtUtc: DateTime.UtcNow.ToString("O"),
-                Status: advisory.Ok ? "sent" : "failed",
-                Error: advisory.Error);
-
-            if (existingAdvisory is not null)
-                _db.DeleteNotice(finding.KeySha256, finding.RepoFullName,
-                    finding.FilePath, advisoryChannel);
-            _db.InsertNotice(notice);
-
-            if (advisory.Ok)
-                return new NoticeSendResult(true, null, advisory.HtmlUrl, null, Skipped: false);
+            advisory = await _client.TryOpenSecurityAdvisoryAsync(
+                finding.RepoFullName, summary, description, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            advisory = new AdvisoryResult(false, null, null, ex.Message);
         }
 
-        // Advisory not available or failed — fall back to public issue.
-        return await SendAsync(finding, ct);
+        if (advisory is null)
+        {
+            // Private vulnerability reporting is not available on this repo:
+            // the documented fallback is the public courtesy issue. A stale
+            // failed advisory row is superseded by the issue notice.
+            if (existingAdvisory is not null)
+                _db.DeleteNotice(finding.KeySha256, finding.RepoFullName,
+                    finding.FilePath, AdvisoryChannel);
+            return await SendAsync(finding, ct);
+        }
+
+        var notice = new Notice(
+            KeySha256: finding.KeySha256,
+            RepoFullName: finding.RepoFullName,
+            FilePath: finding.FilePath,
+            Channel: AdvisoryChannel,
+            IssueNumber: null,
+            IssueHtmlUrl: advisory.HtmlUrl,
+            SentAtUtc: DateTime.UtcNow.ToString("O"),
+            Status: advisory.Ok ? "sent" : "failed",
+            Error: advisory.Error);
+
+        if (existingAdvisory is not null)
+            _db.DeleteNotice(finding.KeySha256, finding.RepoFullName,
+                finding.FilePath, AdvisoryChannel);
+        _db.InsertNotice(notice);
+
+        return new NoticeSendResult(
+            advisory.Ok, null, advisory.HtmlUrl, advisory.Error, Skipped: false);
     }
 
     private static string Render(string template, Finding f) => template

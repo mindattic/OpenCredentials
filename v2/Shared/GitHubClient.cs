@@ -13,9 +13,16 @@ public sealed class GitHubClient : IDisposable
 
     private readonly HttpClient _http;
 
-    public GitHubClient(string token)
+    public GitHubClient(string token) : this(token, null) { }
+
+    /// <summary>
+    /// Test seam: lets tests substitute a fake <see cref="HttpMessageHandler"/>
+    /// so no request ever reaches the real GitHub API.
+    /// </summary>
+    internal GitHubClient(string token, HttpMessageHandler? handler)
     {
-        _http = new HttpClient { BaseAddress = new Uri(ApiBase) };
+        _http = handler is null ? new HttpClient() : new HttpClient(handler);
+        _http.BaseAddress = new Uri(ApiBase);
         _http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", token);
         _http.DefaultRequestHeaders.Accept.Add(
@@ -147,24 +154,32 @@ public sealed class GitHubClient : IDisposable
     }
 
     /// <summary>
-    /// Attempts to file a private vulnerability report via GitHub's security
-    /// advisory API (the repo must have private vulnerability reporting enabled).
-    /// Returns null when the feature is unavailable (404 = not enabled, 403 =
-    /// no permission, 422 = validation error) so the caller can fall back to a
-    /// public issue. A null return is NOT an error — it means "use issue fallback."
+    /// Files a private vulnerability report via GitHub's private vulnerability
+    /// reporting API (<c>POST /repos/{owner}/{repo}/security-advisories/reports</c>;
+    /// the repo must have private vulnerability reporting enabled).
+    /// Returns null when the feature is unavailable for this repo (404 = not
+    /// enabled, 403 = not permitted, 422 = rejected) so the caller can fall
+    /// back to a public issue. A null return is NOT an error — it means "use
+    /// the issue fallback." A 403/429 that carries rate-limit headers is a
+    /// transient failure, not "unavailable", and is returned as a failed
+    /// result so the caller retries the private channel instead of going public.
     /// </summary>
     public async Task<AdvisoryResult?> TryOpenSecurityAdvisoryAsync(
         string repoFullName, string summary, string description,
         CancellationToken ct = default)
     {
-        var url = $"/repos/{repoFullName}/security-advisories";
+        var url = $"/repos/{repoFullName}/security-advisories/reports";
         var payload = new AdvisoryCreateRequest(summary, description, "medium");
         using var resp = await _http.PostAsJsonAsync(url, payload, ct);
 
+        var rateLimited = resp.StatusCode == HttpStatusCode.TooManyRequests
+            || (resp.StatusCode == HttpStatusCode.Forbidden && HasRateLimitSignal(resp));
+
         // These codes mean "not available" — caller should fall back to issue.
-        if (resp.StatusCode is HttpStatusCode.NotFound
-                            or HttpStatusCode.Forbidden
-                            or HttpStatusCode.UnprocessableEntity)
+        if (!rateLimited
+            && resp.StatusCode is HttpStatusCode.NotFound
+                               or HttpStatusCode.Forbidden
+                               or HttpStatusCode.UnprocessableEntity)
             return null;
 
         if (!resp.IsSuccessStatusCode)
@@ -177,6 +192,11 @@ public sealed class GitHubClient : IDisposable
             cancellationToken: ct);
         return new AdvisoryResult(true, created?.HtmlUrl, created?.GhsaId, null);
     }
+
+    private static bool HasRateLimitSignal(HttpResponseMessage resp) =>
+        resp.Headers.Contains("Retry-After")
+        || (resp.Headers.TryGetValues("X-RateLimit-Remaining", out var r)
+            && r.FirstOrDefault() == "0");
 
     private static FileContentResult ToResult(ContentsResponse payload)
     {
@@ -297,7 +317,6 @@ public sealed class AdvisoryCreateRequest
     [JsonPropertyName("summary")] public string Summary { get; }
     [JsonPropertyName("description")] public string Description { get; }
     [JsonPropertyName("severity")] public string Severity { get; }
-    [JsonPropertyName("vulnerabilities")] public object[] Vulnerabilities { get; } = [];
     public AdvisoryCreateRequest(string summary, string description, string severity)
     {
         Summary = summary;

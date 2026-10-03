@@ -17,6 +17,18 @@ public sealed class Scraper
     private readonly ProviderPattern[] _patterns;
     private Heartbeat? _hb;
 
+    /// <summary>Delay between disclosures in the notify pass (tests set it to zero).</summary>
+    internal TimeSpan NoticePacing { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Test entry point: runs only the notify pass.</summary>
+    internal async Task RunNotifyPassAsync(CancellationToken ct)
+    {
+        using var hb = new Heartbeat("notifying");
+        _hb = hb;
+        try { await SendPendingNoticesAsync(_db, ct); }
+        finally { _hb = null; }
+    }
+
     public Scraper(
         GitHubClient client,
         Db db,
@@ -160,8 +172,9 @@ public sealed class Scraper
     }
 
     /// <summary>
-    /// Auto-open a GitHub issue on every leaker repo we haven't already
-    /// notified, capped at _maxNotices per run. Skips findings that are
+    /// Auto-disclose every finding we haven't already notified, capped at
+    /// _maxNotices per run: a private vulnerability report when the repo has
+    /// private reporting enabled, else a public courtesy issue. Skips findings that are
     /// already in a terminal remediation state — no point pinging a repo
     /// where the leak has already been removed.
     ///
@@ -218,12 +231,15 @@ public sealed class Scraper
         foreach (var f in queue)
         {
             if (ct.IsCancellationRequested) break;
-            var result = await noticeSvc.SendAsync(f, ct);
+            // Advisory-first: private vulnerability report when the repo
+            // supports it, public courtesy issue only as the fallback.
+            var result = await noticeSvc.SendVulnerabilityReportAsync(f, ct);
             if (result.Ok)
             {
                 ok++;
-                hb.WriteLine(
-                    $"  notified {f.RepoFullName} #{result.IssueNumber}");
+                hb.WriteLine(result.IssueNumber is { } n
+                    ? $"  notified {f.RepoFullName} via issue #{n}"
+                    : $"  notified {f.RepoFullName} via private advisory {result.IssueHtmlUrl}");
             }
             else
             {
@@ -233,7 +249,7 @@ public sealed class Scraper
             }
             // Pace issue creation; GitHub's content-creation secondary
             // limit is stricter than read.
-            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+            await Task.Delay(NoticePacing, ct);
         }
         hb.WriteLine($"[notify] sent={ok} failed={failed}");
     }

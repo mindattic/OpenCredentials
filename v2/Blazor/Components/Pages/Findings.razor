@@ -112,7 +112,7 @@ else
                         else if (row.Notice.Status == "sent")
                         {
                             <a class="badge sent" href="@row.Notice.IssueHtmlUrl" target="_blank" rel="noreferrer">
-                                #@row.Notice.IssueNumber
+                                @(row.Notice.IssueNumber is { } issueNo ? $"#{issueNo}" : "advisory")
                             </a>
                         }
                         else
@@ -258,7 +258,9 @@ else
         var allFindings = Db.AllFindings();
         var allNotices = Db.AllNotices()
             .GroupBy(n => (n.KeySha256, n.RepoFullName, n.FilePath))
-            .ToDictionary(g => g.Key, g => g.First());
+            // A finding can hold a failed advisory row and a sent issue row;
+            // show the sent one.
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(n => n.Status == "sent").First());
         var latestRem = Db.LatestRemediationChecks();
         var checkCounts = Db.RemediationCheckCounts();
         _types = Db.AllExposureTypes();
@@ -309,10 +311,12 @@ else
     private async Task SendNotice(Finding f)
     {
         _busy = true;
-        _status = $"opening issue on {f.RepoFullName}…";
+        _status = $"disclosing to {f.RepoFullName}…";
         try
         {
-            var result = await NoticeSvc.SendAsync(f);
+            // Advisory-first: private vulnerability report when the repo
+            // supports it, public courtesy issue only as the fallback.
+            var result = await NoticeSvc.SendVulnerabilityReportAsync(f);
             _status = result.Ok
                 ? $"opened {result.IssueHtmlUrl}"
                 : $"failed: {result.Error}";
