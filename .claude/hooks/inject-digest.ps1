@@ -27,8 +27,7 @@ try {
 [OpenCredentials — Codex canon, injected at session start]
 The following is the AUTHORITATIVE project digest, generated from docs/BIBLE.md.
 Treat it as the source of truth for what the project IS, is NOT, and its Laws.
-Full detail lives in docs/BIBLE.md; amendments in docs/AMENDMENTS.md win over the
-bible. Reference facts by their {#OC-...} IDs. Do not retain raw credentials
+Full detail lives in docs/BIBLE.md. Reference facts by their {#OC-...} IDs. Do not retain raw credentials
 (OC-LAW-1); disclosure is opt-in per exposure type (OC-LAW-2).
 
 "@

@@ -11,7 +11,7 @@ Public-service credential-leak detection for GitHub: find exposed API keys and c
    Code Search                                       (every run)
    + Contents      └─ writes findings           └─ writes
                                                    remediation_checks
-   leaker repo  ◄─── advisory or issue (only when auto-inform is on)
+   leaker repo  ◄─── courtesy issue (only when auto-inform is on)
 
    raw match ─► SHA-256 + scheme prefix ─► discarded inside one function
 ```
@@ -36,7 +36,8 @@ OpenCredentials runs on your own machine against public GitHub; there is no host
 
 ### Notify
 
-- `NoticeService` tries GitHub's private security-advisory channel first and falls back to a public courtesy issue on the leaker's own repo.
+- `NoticeService.SendAsync` opens a public courtesy issue on the leaker's own repo and records a `Notice` row; sending twice for the same finding is a no-op.
+- `NoticeService.SendVulnerabilityReportAsync` (private security advisory first, public issue as fallback) exists in the library but neither the CLI nor the web UI calls it yet.
 - Fires automatically only for exposure types switched to auto-inform; any finding can also be sent by hand from the web UI.
 
 ### Recheck
@@ -74,7 +75,7 @@ The CLI writes findings to the LocalDB `OpenCredentials` database and regenerate
 Each invocation runs three phases in order and stores everything in the SQL Server LocalDB `OpenCredentials` database (override with `--connection` or the `OPENCREDS_DB` env var):
 
 1. Scan. Query GitHub Code Search for each pattern's needle, fetch matching files, run the regexes, and store metadata plus the SHA-256 of each match.
-2. Notify. For exposure types with auto-inform on, file an advisory or issue for unnotified findings, up to `--max-notices` per run.
+2. Notify. For exposure types with auto-inform on, open a courtesy issue for unnotified findings, up to `--max-notices` per run.
 3. Recheck. Re-fetch earlier findings and record whether the hash is still present, up to `--max-rechecks` per run.
 
 The default mode loops every 60 seconds with an interactive menu; `--headless` drops the menu and pairs with `--loop` for daemon or sidecar use.
@@ -119,7 +120,7 @@ Every type defaults to auto-inform off, so the CLI's auto-notify pass does nothi
 - Scope. Public repositories indexed by GitHub Code Search only. No private data, no auth-walled endpoints, no cloning, no execution of repo code.
 - Non-retention is enforced in code. The raw regex match is bound to a local variable, used to compute SHA-256 and a short scheme prefix, then dropped. It is never written to disk, logged, serialized or returned from a function. See `ScanContent` in [v2/Cli/Scraper.cs](v2/Cli/Scraper.cs).
 - No validation. The tool never calls provider APIs with detected credentials. Liveness is inferred from the recheck pass (does the hash still appear in the file?), not from authenticated probes.
-- Disclosure. The Notify pass first tries GitHub's private security-advisory API and falls back to a public issue on the leaker's own repo. Either way the body is Markdown, links to the offending file, and includes only the SHA-256 fingerprint and scheme prefix. Public issues mention the repo owner so GitHub emails them.
+- Disclosure. The Notify pass and the web UI's Send button open a public issue on the leaker's own repo. The body is Markdown, links to the offending file, and includes only the SHA-256 fingerprint and scheme prefix. The issue mentions the repo owner so GitHub emails them.
 - IRB note. Opening an issue or advisory on someone's repo is a third-party disclosure act; for a thesis committee, document it in your IRB submission. The `Notices` and `RemediationChecks` tables keep the audit trail of what was sent, when, to whom, and what happened next.
 
 The project began as a Masters-thesis dataset on LLM API key prevalence and now covers the broader credential surface.
@@ -222,14 +223,12 @@ The rate-limit handler respects `Retry-After`, `X-RateLimit-Remaining` and `X-Ra
 | Aspect | v1 (`v1/`) | v2 (`v2/`) |
 | --- | --- | --- |
 | Language | Python | C# on .NET 9 |
-| Status | Retired 2026-04-25; reference only, do not run | Current |
+| Status | Reference only; do not run | Current |
 | Storage | SQLite | SQL Server LocalDB |
 | Coverage | LLM keys only | LLM and cloud API keys, GitHub PATs, payment tokens, DB connection strings, PEM private keys, contextual passwords |
-| Disclosure | `disclosure.py` | `NoticeService`: private security advisory first, public issue as fallback |
+| Disclosure | `disclosure.py` | `NoticeService`: public courtesy issue (advisory-first method present but not wired) |
 | Reporting | `report.py` (static HTML) | Live Blazor Server UI plus `Report.cs` HTML export |
 | Front doors | One scraper process | CLI (`opencreds`) and Blazor UI sharing one engine (`OpenCredentials.Shared`) |
-
-The project's early working title was FractionsOfACent (FOAC). Every identifier (namespaces, database name, CLI binary, settings paths, env vars) was renamed to `OpenCredentials` or `OC`; see [docs/AMENDMENTS.md](docs/AMENDMENTS.md) (`OC-A2`) for the rename record and the advisory-first disclosure change.
 
 `v1/` dates from when the project ran two parallel scrapers (Python and an early C# version) against one SQLite database. It never gained the exposure-type coverage, and notify, recheck and the Blazor UI were C# only from the start. Do not run `v1/` code; it predates the current schema. [v1/DEPRECATED.md](v1/DEPRECATED.md) maps every old file to its replacement.
 
@@ -251,7 +250,7 @@ OpenCredentials/
 │   │   ├── Db.cs                 Query/command facade used by both apps
 │   │   ├── Finding.cs
 │   │   ├── Notice.cs             Notice + RemediationCheck records
-│   │   ├── NoticeService.cs      Advisory/issue opening + notice persistence
+│   │   ├── NoticeService.cs      Issue opening (+ unwired advisory path) + notice persistence
 │   │   ├── GitHubClient.cs       Search, fetch, refetch, open issue/advisory
 │   │   ├── GitHubTokenProvider.cs  MindAttic.Vault + env + legacy resolver
 │   │   ├── Patterns.cs           ProviderPattern[] + ExposureTypes
@@ -271,7 +270,7 @@ OpenCredentials/
 │       │   └── CumulativeChart, HistogramChart, ProviderBarChart, DonutChart (.razor)
 │       ├── wwwroot/app.css
 │       └── appsettings.json
-├── v1/                           Retired Python reference; do not extend or run
+├── v1/                           Python reference only; do not extend or run
 ├── docs/                         Codex canonical documentation (BIBLE, AMENDMENTS,
 │                                 USER_STORIES, digest, data/, rfc/)
 ├── tools/                        codex.ps1 (digest + doctor), build-readme.ps1
@@ -308,7 +307,7 @@ This repo follows the MindAttic Codex documentation standard: each fact lives in
 | Layer | File | Purpose |
 | --- | --- | --- |
 | L0 | [docs/BIBLE.md](docs/BIBLE.md) | What OpenCredentials is and is not, architecture canon, project Laws (`OC-LAW-*`), verified build and test state, glossary |
-| L1 | [docs/AMENDMENTS.md](docs/AMENDMENTS.md) | Append-only change log (`OC-A<n>`); an amendment wins over the bible |
+| L1 | [docs/AMENDMENTS.md](docs/AMENDMENTS.md) | Pending decisions not yet folded into the bible (normally empty) |
 | L2 | [`docs/USER_STORIES.md`](docs/USER_STORIES.md) | Test-cited stories (`OC-US-*`) |
 | rfc | [docs/rfc](docs/rfc) | Design notes, for example [0001-verification-harness.md](docs/rfc/0001-verification-harness.md) |
 | L5 | [`docs/data/exposure_types.json`](docs/data/exposure_types.json) | Canon-as-data for the `ExposureTypes` catalog |

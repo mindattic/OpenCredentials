@@ -4,7 +4,7 @@ project: OpenCredentials
 code: OC
 layer: bible
 status: living
-updated: 2026-06-07
+updated: 2026-10-03
 ---
 
 # OpenCredentials — Project Bible
@@ -32,7 +32,7 @@ OpenCredentials is a public-service credential-leak pipeline: it watches public 
 - **NOT an offensive-security tool.** No exploitation, no pentest, no use of any found secret.
 - **NOT a private-repo scanner.** Scope is public repositories indexed by GitHub Code Search only — no auth-walled endpoints, no cloning, no execution of repo code, no GitHub Enterprise.
 - **NOT a rate-limit evader.** It does not rotate multiple PATs to multiply the budget (a GitHub AUP violation). For higher legitimate throughput, apply for GitHub Research Access.
-- **NOT the retired v1.** The `v1/` Python scraper is retired reference only (see [`v1/DEPRECATED.md`](../v1/DEPRECATED.md)); do not extend it.
+- **NOT the `v1/` Python scraper.** `v1/` is reference only (see [`v1/DEPRECATED.md`](../v1/DEPRECATED.md)); do not run or extend it.
 
 ## 4. Architecture canon {#OC-§4}
 
@@ -65,7 +65,7 @@ OpenCredentials is a public-service credential-leak pipeline: it watches public 
 EF entities are defined in [`v2/Shared/Entities.cs`](../v2/Shared/Entities.cs); mapping in [`v2/Shared/OpenCredentialsContext.cs`](../v2/Shared/OpenCredentialsContext.cs).
 - **Finding** — one detected leak, keyed by `(KeySha256, RepoFullName, FilePath)`. Carries provider, exposure type, model hint, repo/file pointers, key prefix + length, first/last-seen. Never the secret.
 - **ScannedFile** — a `(repo, path)` claim row; the atomic unit of concurrency-safe work distribution between scanners.
-- **Notice** — a disclosure record keyed by `(KeySha256, RepoFullName, FilePath, Channel)`; the GitHub issue opened on the leaker repo, with status `sent`/`failed`.
+- **Notice** — a disclosure record keyed by `(KeySha256, RepoFullName, FilePath, Channel)` with status `sent`/`failed`. `Channel` is `github_issue` (public courtesy issue) or `github_advisory` (private security advisory).
 - **RemediationCheck** — a time-stamped recheck result per finding (`present`/`removed`/`repo_gone`/`file_gone`/`fetch_failed`).
 - **ExposureType** — the broad category lookup (`ApiKey`, `ConnectionString`, `PrivateKey`, `PlainTextPassword`), each with an `AutoInform` gate. Canon-as-data: see [`docs/data/exposure_types.json`](data/exposure_types.json).
 - **ScannerControl** — single-row cross-process control surface: `RequestedState`, heartbeat, current label.
@@ -74,8 +74,9 @@ EF entities are defined in [`v2/Shared/Entities.cs`](../v2/Shared/Entities.cs); 
 ### 4.3 Key services (VERBS)
 - **`Scraper.RunAsync`** ([`v2/Cli/Scraper.cs`](../v2/Cli/Scraper.cs)) — the 3-phase pipeline: scan (search → claim → fetch → `ScanContent` → upsert), `SendPendingNoticesAsync` (gated by auto-inform), `RecheckRemediationsAsync`. Writes the HTML report each pass.
 - **`Db`** ([`v2/Shared/Db.cs`](../v2/Shared/Db.cs)) — persistence facade over `IDbContextFactory<OpenCredentialsContext>`; atomic `ClaimScan`/`ReleaseScan`, `UpsertFinding`, notice/recheck reads & writes, exposure-type auto-inform get/set, scanner control + heartbeat.
-- **`NoticeService.SendAsync`** ([`v2/Shared/NoticeService.cs`](../v2/Shared/NoticeService.cs)) — idempotent issue-open + notice persistence; renders the courtesy template and calls `GitHubClient.OpenIssueAsync`.
-- **`GitHubClient`** ([`v2/Shared/GitHubClient.cs`](../v2/Shared/GitHubClient.cs)) — `SearchCodeAsync`, `FetchFileAsync`, `RefetchAsync`, `OpenIssueAsync`; all rate-limit handling funnels through `HandleRateLimitAsync`.
+- **`NoticeService.SendAsync`** ([`v2/Shared/NoticeService.cs`](../v2/Shared/NoticeService.cs)) — idempotent issue-open + notice persistence (channel `github_issue`); renders the courtesy template and calls `GitHubClient.OpenIssueAsync`. This is the path both front doors use (the CLI notify pass and the Findings page Send button).
+- **`NoticeService.SendVulnerabilityReportAsync`** — advisory-first disclosure: tries `GitHubClient.TryOpenSecurityAdvisoryAsync` (`POST /repos/{owner}/{repo}/security-advisories`, private vulnerability reporting); a 404/403/422 means the feature is unavailable and it falls back to `SendAsync`. Records channel `github_advisory` when the advisory path is taken. Implemented in `Shared` but not yet called by the CLI or the Blazor UI.
+- **`GitHubClient`** ([`v2/Shared/GitHubClient.cs`](../v2/Shared/GitHubClient.cs)) — `SearchCodeAsync`, `FetchFileAsync`, `RefetchAsync`, `OpenIssueAsync`, `TryOpenSecurityAdvisoryAsync`; all rate-limit handling funnels through `HandleRateLimitAsync`.
 - **`GitHubTokenProvider`** ([`v2/Shared/GitHubTokenProvider.cs`](../v2/Shared/GitHubTokenProvider.cs)) — resolves the PAT via `MindAttic.Vault` → User Secrets → `GITHUB_TOKEN` → legacy settings.json.
 
 ## 5. The Laws {#OC-§5}
@@ -102,13 +103,13 @@ The GitHub PAT is resolved by `GitHubTokenProvider` via the `MindAttic.Vault` co
 
 ## 6. Verified state {#OC-§6}
 
-Build/test evidence recorded 2026-06-07 (dotnet SDK 10.0.300, TFM net9.0, Windows PowerShell 5.1):
+Build/test evidence recorded 2026-10-03 (dotnet SDK 10.0.400, TFM net9.0, Windows PowerShell 5.1):
 
-- **Build: GREEN.** `dotnet build OpenCredentials.sln -c Release` → **Build succeeded, 0 Warning(s), 0 Error(s)** (all three projects: `Shared` → `net9.0/OpenCredentials.Shared.dll`, `Cli` → `net9.0/fractions.dll`, `Blazor` → `net9.0/OpenCredentials.Blazor.dll`). Verified by Codex full-sync 2026-06-07.
-- **Tests: NONE.** No automated test project exists in the repo (no `*.Tests` project; `git ls-files` finds no test sources). Every story in [USER_STORIES.md](USER_STORIES.md) is therefore `🟡` at best on the "verified by test" axis — see the audit note there. Closing this is the #1 frontier item ([§7](#OC-§7), [RFC 0001](rfc/0001-verification-harness.md)).
-- **Runtime evidence:** the `--headless` one-shot CLI mode is runnable and CI-shaped (exits non-zero on a failed pass); `findings.db*` and `findings.htm` from prior runs are present but git-ignored (current persistence is SQL Server LocalDB).
+- **Build: GREEN.** `dotnet build OpenCredentials.sln -c Release` → **Build succeeded, 0 Warning(s), 0 Error(s)** (all three projects: `Shared` → `net9.0/OpenCredentials.Shared.dll`, `Cli` → `net9.0/opencreds.dll`, `Blazor` → `net9.0/OpenCredentials.Blazor.dll`).
+- **Tests: NONE.** No automated test project exists in the repo (no `*.Tests` project; `git ls-files` finds no test sources). Every story in [USER_STORIES.md](USER_STORIES.md) is therefore `🟡` at best on the "verified by test" axis. Closing this is the #1 frontier item ([§7](#OC-§7), [RFC 0001](rfc/0001-verification-harness.md)).
+- **Runtime evidence:** the `--headless` one-shot CLI mode is runnable and CI-shaped (exits non-zero on a failed pass). Persistence is SQL Server LocalDB; the tracked root files `findings.db*` (SQLite) and `findings.htm` are not read by v2.
 
-> `tools/codex.ps1 doctor` checks that every file path cited in this bible exists on disk; it passed clean (0 errors, 0 warnings) on 2026-06-07.
+> `tools/codex.ps1 doctor` checks that every file path cited in this bible exists on disk.
 
 ## 7. Active frontier {#OC-§7}
 
@@ -130,7 +131,7 @@ A feature is **done** (`✅`) only when:
 - **Provider** — the specific source of a credential (`anthropic`, `aws-access-key`, `postgres-uri`, …); maps to one `ProviderPattern`.
 - **Finding** — a detected leak, identified by SHA-256 fingerprint + repo + file path. Never contains the secret.
 - **Fingerprint** — `(SHA-256 hex, 16-char scheme prefix, length)` computed from a raw match; the only thing persisted.
-- **Notice** — a courtesy GitHub issue opened on the leaker's repo disclosing the finding.
+- **Notice** — a disclosure sent to the leaker's repo: a courtesy GitHub issue (`github_issue`) or a private security advisory (`github_advisory`).
 - **Remediation check** — a re-fetch + re-hash that determines whether a previously-found leak is still present.
 - **auto_inform** — per-exposure-type boolean gate; when `false` (default) the CLI never auto-files an issue for that type.
 - **ScannerControl** — the single DB row that lets the Web UI pause/resume any running scanner.

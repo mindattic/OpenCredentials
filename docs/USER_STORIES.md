@@ -4,12 +4,12 @@ project: OpenCredentials
 code: OC
 layer: stories
 status: living
-updated: 2026-06-07
+updated: 2026-10-03
 ---
 
 # OpenCredentials — User Stories
 
-> ✅ done (shipped & tested) · 🟡 partial (shipped, not test-proven) · ⬜ planned · 🗑️ cut.
+> ✅ done (shipped & tested) · 🟡 partial (shipped, not test-proven) · ⬜ planned.
 > Every ✅ cites the test that proves it. **This repo currently has no automated test project**
 > (`git ls-files` finds no `*.Tests` sources), so no story can be ✅ on the "verified by test"
 > axis yet — shipped behavior is marked 🟡 with the strongest available evidence. Closing the
@@ -17,7 +17,7 @@ updated: 2026-06-07
 
 ## Epic A — Detection
 
-- **OC-US-A1 🟡** As an operator, I can scan public GitHub for leaked credentials across many providers (LLM, cloud, VCS, payments, comms, DB URIs, private keys), so I find real exposures. *Given a GitHub PAT, When I run `opencreds --headless`, Then it searches each provider needle, fetches matches, and records `Finding` rows.* *(Shipped: `Scraper.RunAsync` + `Patterns.All` in [`v2/Cli/Scraper.cs`](../v2/Cli/Scraper.cs), [`v2/Shared/Patterns.cs`](../v2/Shared/Patterns.cs). No verifying test — see audit note.)*
+- **OC-US-A1 🟡** As an operator, I can scan public GitHub for leaked credentials across many providers (LLM, cloud, VCS, payments, comms, DB URIs, private keys), so I find real exposures. *Given a GitHub PAT, When I run `opencreds --headless`, Then it searches each provider needle, fetches matches, and records `Finding` rows.* *(Shipped: `Scraper.RunAsync` + `Patterns.All` in [`v2/Cli/Scraper.cs`](../v2/Cli/Scraper.cs), [`v2/Shared/Patterns.cs`](../v2/Shared/Patterns.cs). No verifying test.)*
 - **OC-US-A2 🟡** As a researcher, the scanner records metadata only and never retains the raw secret, so the project is IRB-defensible ([OC-LAW-1](BIBLE.md#OC-LAW-1)). *Given a match, When it is recorded, Then only SHA-256 + 16-char prefix + length persist.* *(Shipped: `Scraper.Fingerprint`, `rawKey = null!` after hashing. NO automated test asserts non-retention — this invariant is the #1 thing to test.)*
 - **OC-US-A3 🟡** As an operator, I can opt into high-false-positive PlainTextPassword patterns separately, so they never pollute the default scan. *Given `--include-passwords`, When I scan, Then `Patterns.WithPasswords()` is used; otherwise it is not.* *(Shipped: `Patterns.WithPasswords`, gated by the `--include-passwords` flag in [`v2/Cli/Program.cs`](../v2/Cli/Program.cs).)*
 
@@ -26,6 +26,7 @@ updated: 2026-06-07
 - **OC-US-B1 🟡** As an operator, the scanner never auto-files an issue until I flip a category on, so innocent repos aren't harmed ([OC-LAW-2](BIBLE.md#OC-LAW-2)). *Given all exposure types default `auto_inform=false`, When the notify pass runs, Then it sends nothing.* *(Shipped: `Scraper.SendPendingNoticesAsync` auto-inform gate; seed defaults `AutoInform=false` in [`v2/Shared/Db.cs`](../v2/Shared/Db.cs).)*
 - **OC-US-B2 🟡** As an operator, I can file a courtesy issue on a leaker's repo with the fingerprint (never the secret), so they can rotate. *Given a finding, When I send a notice, Then a GitHub issue is opened and a `Notice` row recorded idempotently.* *(Shipped: `NoticeService.SendAsync` → `GitHubClient.OpenIssueAsync`.)*
 - **OC-US-B3 🟡** As an operator, sending a notice twice for the same finding+channel is a no-op, so I never spam a repo. *Given an existing `sent` notice, When I send again, Then it returns `Skipped=true` without re-opening.* *(Shipped: idempotency check in `NoticeService.SendAsync`.)*
+- **OC-US-B4 ⬜** As an operator, disclosure goes through GitHub's private vulnerability reporting when the repo has it enabled and falls back to a public issue otherwise, so security findings use the private channel first. *Given a repo with private vulnerability reporting, When a notice is sent, Then a `github_advisory` Notice is recorded instead of a public issue.* *(Implemented as `NoticeService.SendVulnerabilityReportAsync` in [`v2/Shared/NoticeService.cs`](../v2/Shared/NoticeService.cs), but neither the CLI notify pass nor the Findings page calls it yet.)*
 
 ## Epic C — Remediation tracking
 
@@ -55,8 +56,4 @@ Dependency-ordered toward a test-proven, IRB-defensible pipeline:
 5. ⬜ **Notice idempotency test** (OC-US-B3 → ✅).
 6. ⬜ **Remediation status-transition test** over a fake `GitHubClient` (OC-US-C1 → ✅).
 7. ⬜ **Concurrency test** for `ClaimScan` race (OC-US-E3 → ✅).
-
-### Audit log
-
-- **No story was rewritten from a prior spec.** This is the first Codex story set for OpenCredentials; it was derived from `README.md`, the source tree, and the (now superseded) ad-hoc docs. There is no pre-existing `user_stories.md` to preserve.
-- **Status honesty note (original spec — audit log):** the README presents many capabilities as shipped facts. Because the repo has **no automated tests**, this Codex deliberately downgrades all shipped behavior to `🟡` rather than `✅`, per [HOUSE-LAW-8](../../MindAttic.HouseRules.md#HOUSE-LAW-8) and [OC-§8](BIBLE.md#OC-§8). Behavior is real and runnable; it is simply not test-proven.
+8. ⬜ **Wire advisory-first disclosure** into the notify pass and the Findings Send button (OC-US-B4).

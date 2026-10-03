@@ -8,7 +8,7 @@
              JSON-schema, story test tokens, cited file paths, digest freshness)
              and exits non-zero on any hard error.
     digest : regenerates docs/BIBLE.digest.md from BIBLE.md sections 1, 3, 5, 9
-             plus a status index and the latest amendment head.
+             plus a status index and any pending decisions.
 
     Pure PowerShell, no build step. Windows PowerShell 5.1 safe (no pwsh-only syntax).
 
@@ -403,11 +403,11 @@ function Build-DigestText {
         $statusLine = "$d done / $p partial / $pl planned / $c cut"
     }
 
-    # Latest amendment head (first '## ' line in AMENDMENTS.md).
-    $amendHead = '(none)'
+    # Pending decisions (every '## ' head in AMENDMENTS.md); normally none.
+    $pending = @()
     if (Test-Path $AmendPath) {
         $al = (Read-AllText $AmendPath) -split "\r?\n"
-        foreach ($ln in $al) { if ($ln -match '^##\s+(.+)$') { $amendHead = $matches[1].Trim(); break } }
+        foreach ($ln in $al) { if ($ln -match '^##\s+(.+)$') { $pending += $matches[1].Trim() } }
     }
 
     $today = (Get-Date).ToString('yyyy-MM-dd')
@@ -420,8 +420,12 @@ function Build-DigestText {
     [void]$sb.AppendLine("> Regenerated: $today")
     [void]$sb.AppendLine("")
     [void]$sb.AppendLine("**Status index:** $statusLine")
-    [void]$sb.AppendLine("**Latest amendment:** $amendHead")
     [void]$sb.AppendLine("")
+    if ($pending.Count -gt 0) {
+        [void]$sb.AppendLine("**Pending decisions (docs/AMENDMENTS.md):**")
+        foreach ($h in $pending) { [void]$sb.AppendLine("- $h") }
+        [void]$sb.AppendLine("")
+    }
     [void]$sb.AppendLine($s1); [void]$sb.AppendLine("")
     [void]$sb.AppendLine($s3); [void]$sb.AppendLine("")
     [void]$sb.AppendLine($s5); [void]$sb.AppendLine("")
