@@ -157,7 +157,7 @@ public sealed class Scraper
 
         hb.Label = "writing report";
         var all = db.AllFindings();
-        var htmlFile = Report.Write(all, _reportFile);
+        var htmlFile = await Report.WriteAsync(all, _reportFile, ct);
         var (endFindings, endScanned) = db.Stats();
         hb.WriteLine(
             $"[done] new findings: {totalNew}, total in db: {endFindings}, " +

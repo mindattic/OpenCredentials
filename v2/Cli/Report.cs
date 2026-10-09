@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Text;
+using MindAttic.Export.Artifacts;
 
 namespace OpenCredentials;
 
@@ -19,11 +20,20 @@ public static class Report
         ["google-gemini"] = "Google Gemini",
     };
 
-    public static FileInfo Write(IReadOnlyList<Finding> findings, FileInfo jsonOut)
+    private static readonly ArtifactOptions ReportArtifact = new()
+    {
+        Existing = ExistingArtifact.Overwrite,
+        SanitizeName = false,
+        Encoding = new UTF8Encoding(false),
+    };
+
+    public static async Task<FileInfo> WriteAsync(IReadOnlyList<Finding> findings, FileInfo jsonOut,
+                                                  CancellationToken ct = default)
     {
         var htmlPath = Path.ChangeExtension(jsonOut.FullName, ".htm");
-        File.WriteAllText(htmlPath, Render(findings), new UTF8Encoding(false));
-        return new FileInfo(htmlPath);
+        var written = await ArtifactWriter.WriteTextAsync(
+            Path.GetDirectoryName(htmlPath)!, Path.GetFileName(htmlPath), Render(findings), ReportArtifact, ct);
+        return new FileInfo(written);
     }
 
     public static string Render(IReadOnlyList<Finding> findings)
