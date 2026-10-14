@@ -53,3 +53,12 @@ Dependency-ordered toward a test-proven, IRB-defensible pipeline:
 2. ⬜ **Pattern-matching tests** with synthetic-key fixtures per provider (OC-US-A1 → ✅).
 3. ⬜ **Remediation status-transition test** over a fake `GitHubClient` (OC-US-C1 → ✅).
 4. ⬜ **Concurrency test** for `ClaimScan` race (OC-US-E3 → ✅).
+
+## Tickets
+> Permanent log of every change and fix — this repo's ticket system. Rows are append-only: never
+> delete or reword one; only move its Status (open → closed / wont-do) and fill in Ref. Status is
+> a word, not a glyph, so tickets don't count toward the story index. Keep this section last.
+
+| ID | Date | Type | Status | Summary | Ref |
+|---|---|---|---|---|---|
+| OC-T1 | 2026-10-12 | docs | closed | Start the permanent ticket log in USER_STORIES.md | — |
