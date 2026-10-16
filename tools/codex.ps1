@@ -29,6 +29,11 @@ $ErrorActionPreference = 'Stop'
 # --- Paths -----------------------------------------------------------------
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $DocsDir  = Join-Path $RepoRoot 'docs'
+# The main checkout. In a git worktree the repo lives elsewhere, so links that
+# climb out of the repo (e.g. ../../MindAttic.HouseRules.md) only resolve from here.
+$MainRoot = $RepoRoot
+$commonDir = git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null
+if ($LASTEXITCODE -eq 0 -and $commonDir) { $MainRoot = Split-Path -Parent $commonDir }
 $BiblePath   = Join-Path $DocsDir 'BIBLE.md'
 $StoriesPath = Join-Path $DocsDir 'USER_STORIES.md'
 $AmendPath   = Join-Path $DocsDir 'AMENDMENTS.md'
@@ -209,6 +214,13 @@ function Test-CitedPaths {
             $pathPart = $pathPart.TrimEnd('/')
             $resolved = Join-Path $dir $pathPart
             $checked++
+            if (-not (Test-Path $resolved)) {
+                # Outside the repo: try the same relative spot from the main checkout.
+                $full = [System.IO.Path]::GetFullPath($resolved)
+                if (-not $full.StartsWith($RepoRoot, [StringComparison]::OrdinalIgnoreCase)) {
+                    $resolved = Join-Path (Join-Path $MainRoot $dir.Substring($RepoRoot.Length)) $pathPart
+                }
+            }
             if (-not (Test-Path $resolved)) {
                 Add-Error "cited-path: $rel references '$pathPart' which does not exist on disk"
                 $missing++
