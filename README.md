@@ -271,7 +271,7 @@ OpenCredentials/
 │   │   │   └── CumulativeChart, HistogramChart, ProviderBarChart, DonutChart (.razor)
 │   │   ├── wwwroot/app.css
 │   │   └── appsettings.json
-│   └── Tests/                    OpenCredentials.Tests (xUnit + bUnit; fake GitHub, in-memory EF)
+│   └── Tests/                    OpenCredentials.Tests (NUnit + bUnit; fake GitHub, in-memory EF)
 ├── v1/                           Python reference only; do not extend or run
 ├── docs/                         Codex canonical documentation (BIBLE, AMENDMENTS,
 │                                 USER_STORIES, digest, data/, rfc/)
@@ -295,7 +295,7 @@ dotnet build OpenCredentials.sln -c Release
 dotnet test OpenCredentials.sln
 ```
 
-`v2/Tests/OpenCredentials.Tests` (xUnit + bUnit) runs against a fake GitHub API (an in-process `HttpMessageHandler`) and an in-memory EF Core database, so no test touches GitHub or LocalDB. It covers disclosure: advisory-first routing in `NoticeService`, the CLI notify pass and the Findings page Send button, the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency are not yet test-proven: see [docs/BIBLE.md](docs/BIBLE.md) section 7 and [docs/rfc/0001-verification-harness.md](docs/rfc/0001-verification-harness.md).
+`v2/Tests/OpenCredentials.Tests` (NUnit + bUnit) runs against a fake GitHub API (an in-process `HttpMessageHandler`) and an in-memory EF Core database, so no test touches GitHub or LocalDB. It covers disclosure: advisory-first routing in `NoticeService`, the CLI notify pass and the Findings page Send button, the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency are not yet test-proven: see [docs/BIBLE.md](docs/BIBLE.md) section 7 and [docs/rfc/0001-verification-harness.md](docs/rfc/0001-verification-harness.md).
 
 ## Limitations
 

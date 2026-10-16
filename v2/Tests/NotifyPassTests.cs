@@ -1,4 +1,4 @@
-using Xunit;
+using NUnit.Framework;
 
 namespace OpenCredentials.Tests;
 
@@ -15,7 +15,7 @@ public class NotifyPassTests
             NoticePacing = TimeSpan.Zero,
         };
 
-    [Fact]
+    [Test]
     public async Task Notify_pass_sends_nothing_while_every_type_is_auto_inform_off()
     {
         var gh = new FakeGitHub();
@@ -24,11 +24,11 @@ public class NotifyPassTests
 
         await NewScraper(gh, db).RunNotifyPassAsync(CancellationToken.None);
 
-        Assert.Empty(gh.Calls);
-        Assert.Empty(db.AllNotices());
+        Assert.That(gh.Calls, Is.Empty);
+        Assert.That(db.AllNotices(), Is.Empty);
     }
 
-    [Fact]
+    [Test]
     public async Task Notify_pass_discloses_through_private_advisory_first()
     {
         var gh = new FakeGitHub();
@@ -38,14 +38,15 @@ public class NotifyPassTests
 
         await NewScraper(gh, db).RunNotifyPassAsync(CancellationToken.None);
 
-        Assert.Single(gh.AdvisoryCalls);
-        Assert.Empty(gh.IssueCalls);
-        var notice = Assert.Single(db.AllNotices());
-        Assert.Equal(NoticeService.AdvisoryChannel, notice.Channel);
-        Assert.Equal("sent", notice.Status);
+        Assert.That(gh.AdvisoryCalls, Has.Exactly(1).Items);
+        Assert.That(gh.IssueCalls, Is.Empty);
+        Assert.That(db.AllNotices(), Has.Exactly(1).Items);
+        var notice = db.AllNotices().Single();
+        Assert.That(notice.Channel, Is.EqualTo(NoticeService.AdvisoryChannel));
+        Assert.That(notice.Status, Is.EqualTo("sent"));
     }
 
-    [Fact]
+    [Test]
     public async Task Notify_pass_falls_back_to_public_issue_when_private_reporting_is_off()
     {
         var gh = new FakeGitHub { Advisory = () => FakeGitHub.Status(System.Net.HttpStatusCode.NotFound) };
@@ -54,8 +55,9 @@ public class NotifyPassTests
 
         await NewScraper(gh, db).RunNotifyPassAsync(CancellationToken.None);
 
-        Assert.Single(gh.IssueCalls);
-        var notice = Assert.Single(db.AllNotices());
-        Assert.Equal("github_issue", notice.Channel);
+        Assert.That(gh.IssueCalls, Has.Exactly(1).Items);
+        Assert.That(db.AllNotices(), Has.Exactly(1).Items);
+        var notice = db.AllNotices().Single();
+        Assert.That(notice.Channel, Is.EqualTo("github_issue"));
     }
 }

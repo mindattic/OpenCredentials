@@ -1,5 +1,5 @@
 using System.Net;
-using Xunit;
+using NUnit.Framework;
 
 namespace OpenCredentials.Tests;
 
@@ -12,7 +12,7 @@ public class NoticeServiceDisclosureTests
     private static Notice? Notice(Db db, Finding f, string channel) =>
         db.GetNotice(f.KeySha256, f.RepoFullName, f.FilePath, channel);
 
-    [Fact]
+    [Test]
     public async Task Repo_with_private_reporting_gets_a_private_advisory_and_no_public_issue()
     {
         var gh = new FakeGitHub();
@@ -22,22 +22,21 @@ public class NoticeServiceDisclosureTests
 
         var result = await svc.SendVulnerabilityReportAsync(f);
 
-        Assert.True(result.Ok);
-        Assert.False(result.Skipped);
-        Assert.Single(gh.AdvisoryCalls);
-        Assert.Equal("/repos/octo/leaky/security-advisories/reports", gh.AdvisoryCalls.Single().Path);
-        Assert.Empty(gh.IssueCalls);
+        Assert.That(result.Ok, Is.True);
+        Assert.That(result.Skipped, Is.False);
+        Assert.That(gh.AdvisoryCalls, Has.Exactly(1).Items);
+        Assert.That(gh.AdvisoryCalls.Single().Path, Is.EqualTo("/repos/octo/leaky/security-advisories/reports"));
+        Assert.That(gh.IssueCalls, Is.Empty);
         var advisory = Notice(db, f, NoticeService.AdvisoryChannel);
-        Assert.NotNull(advisory);
-        Assert.Equal("sent", advisory!.Status);
-        Assert.Equal("https://github.com/o/r/security/advisories/GHSA-test-0000-0001", advisory.IssueHtmlUrl);
-        Assert.Null(Notice(db, f, "github_issue"));
+        Assert.That(advisory, Is.Not.Null);
+        Assert.That(advisory!.Status, Is.EqualTo("sent"));
+        Assert.That(advisory.IssueHtmlUrl, Is.EqualTo("https://github.com/o/r/security/advisories/GHSA-test-0000-0001"));
+        Assert.That(Notice(db, f, "github_issue"), Is.Null);
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.NotFound)]
-    [InlineData(HttpStatusCode.Forbidden)]
-    [InlineData(HttpStatusCode.UnprocessableEntity)]
+    [TestCase(HttpStatusCode.NotFound)]
+    [TestCase(HttpStatusCode.Forbidden)]
+    [TestCase(HttpStatusCode.UnprocessableEntity)]
     public async Task Repo_without_private_reporting_falls_back_to_public_issue(HttpStatusCode unavailable)
     {
         var gh = new FakeGitHub { Advisory = () => FakeGitHub.Status(unavailable) };
@@ -47,15 +46,15 @@ public class NoticeServiceDisclosureTests
 
         var result = await svc.SendVulnerabilityReportAsync(f);
 
-        Assert.True(result.Ok);
-        Assert.Equal(7, result.IssueNumber);
-        Assert.Single(gh.AdvisoryCalls);
-        Assert.Single(gh.IssueCalls);
-        Assert.Equal("sent", Notice(db, f, "github_issue")!.Status);
-        Assert.Null(Notice(db, f, NoticeService.AdvisoryChannel));
+        Assert.That(result.Ok, Is.True);
+        Assert.That(result.IssueNumber, Is.EqualTo(7));
+        Assert.That(gh.AdvisoryCalls, Has.Exactly(1).Items);
+        Assert.That(gh.IssueCalls, Has.Exactly(1).Items);
+        Assert.That(Notice(db, f, "github_issue")!.Status, Is.EqualTo("sent"));
+        Assert.That(Notice(db, f, NoticeService.AdvisoryChannel), Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task Transient_advisory_failure_never_goes_public()
     {
         var gh = new FakeGitHub { Advisory = () => FakeGitHub.Status(HttpStatusCode.BadGateway) };
@@ -65,13 +64,13 @@ public class NoticeServiceDisclosureTests
 
         var result = await svc.SendVulnerabilityReportAsync(f);
 
-        Assert.False(result.Ok);
-        Assert.Empty(gh.IssueCalls);
-        Assert.Equal("failed", Notice(db, f, NoticeService.AdvisoryChannel)!.Status);
-        Assert.Null(Notice(db, f, "github_issue"));
+        Assert.That(result.Ok, Is.False);
+        Assert.That(gh.IssueCalls, Is.Empty);
+        Assert.That(Notice(db, f, NoticeService.AdvisoryChannel)!.Status, Is.EqualTo("failed"));
+        Assert.That(Notice(db, f, "github_issue"), Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task Rate_limited_403_is_a_transient_failure_not_unavailable()
     {
         var gh = new FakeGitHub
@@ -89,11 +88,11 @@ public class NoticeServiceDisclosureTests
 
         var result = await svc.SendVulnerabilityReportAsync(f);
 
-        Assert.False(result.Ok);
-        Assert.Empty(gh.IssueCalls);
+        Assert.That(result.Ok, Is.False);
+        Assert.That(gh.IssueCalls, Is.Empty);
     }
 
-    [Fact]
+    [Test]
     public async Task Retry_after_failed_advisory_replaces_the_failed_row()
     {
         var gh = new FakeGitHub { Advisory = () => FakeGitHub.Status(HttpStatusCode.InternalServerError) };
@@ -105,13 +104,13 @@ public class NoticeServiceDisclosureTests
         gh.Advisory = new FakeGitHub().Advisory;
         var retry = await svc.SendVulnerabilityReportAsync(f);
 
-        Assert.True(retry.Ok);
-        Assert.Equal("sent", Notice(db, f, NoticeService.AdvisoryChannel)!.Status);
-        Assert.Single(db.AllNotices());
-        Assert.Empty(gh.IssueCalls);
+        Assert.That(retry.Ok, Is.True);
+        Assert.That(Notice(db, f, NoticeService.AdvisoryChannel)!.Status, Is.EqualTo("sent"));
+        Assert.That(db.AllNotices(), Has.Exactly(1).Items);
+        Assert.That(gh.IssueCalls, Is.Empty);
     }
 
-    [Fact]
+    [Test]
     public async Task Finding_already_disclosed_by_issue_is_skipped_without_any_GitHub_call()
     {
         var gh = new FakeGitHub { Advisory = () => FakeGitHub.Status(HttpStatusCode.NotFound) };
@@ -123,11 +122,11 @@ public class NoticeServiceDisclosureTests
 
         var again = await svc.SendVulnerabilityReportAsync(f);
 
-        Assert.True(again.Skipped);
-        Assert.Empty(gh.Calls);
+        Assert.That(again.Skipped, Is.True);
+        Assert.That(gh.Calls, Is.Empty);
     }
 
-    [Fact]
+    [Test]
     public async Task Finding_already_disclosed_by_advisory_is_skipped_without_any_GitHub_call()
     {
         var gh = new FakeGitHub();
@@ -139,12 +138,12 @@ public class NoticeServiceDisclosureTests
 
         var again = await svc.SendVulnerabilityReportAsync(f);
 
-        Assert.True(again.Skipped);
-        Assert.Empty(gh.Calls);
-        Assert.Single(db.AllNotices());
+        Assert.That(again.Skipped, Is.True);
+        Assert.That(gh.Calls, Is.Empty);
+        Assert.That(db.AllNotices(), Has.Exactly(1).Items);
     }
 
-    [Fact]
+    [Test]
     public async Task Sending_an_issue_twice_is_a_no_op()
     {
         var gh = new FakeGitHub();
@@ -155,9 +154,9 @@ public class NoticeServiceDisclosureTests
         var first = await svc.SendAsync(f);
         var second = await svc.SendAsync(f);
 
-        Assert.False(first.Skipped);
-        Assert.True(second.Skipped);
-        Assert.Single(gh.IssueCalls);
-        Assert.Single(db.AllNotices());
+        Assert.That(first.Skipped, Is.False);
+        Assert.That(second.Skipped, Is.True);
+        Assert.That(gh.IssueCalls, Has.Exactly(1).Items);
+        Assert.That(db.AllNotices(), Has.Exactly(1).Items);
     }
 }

@@ -418,7 +418,7 @@ dotnet run --project v2/Cli -- --include-passwords --loop 1h</code></pre>
 │   │   │   └── CumulativeChart, HistogramChart, ProviderBarChart, DonutChart (.razor)
 │   │   ├── wwwroot/app.css
 │   │   └── appsettings.json
-│   └── Tests/                    OpenCredentials.Tests (xUnit + bUnit; fake GitHub, in-memory EF)
+│   └── Tests/                    OpenCredentials.Tests (NUnit + bUnit; fake GitHub, in-memory EF)
 ├── v1/                           Python reference only; do not extend or run
 ├── docs/                         Codex canonical documentation (BIBLE, AMENDMENTS,
 │                                 USER_STORIES, digest, data/, rfc/)
@@ -432,7 +432,7 @@ dotnet run --project v2/Cli -- --include-passwords --loop 1h</code></pre>
 <pre><code class="language-powershell">dotnet build OpenCredentials.sln -c Release</code></pre>
 <h2 id="testing">Testing</h2>
 <pre><code class="language-powershell">dotnet test OpenCredentials.sln</code></pre>
-<p><code>v2/Tests/OpenCredentials.Tests</code> (xUnit + bUnit) runs against a fake GitHub API (an in-process <code>HttpMessageHandler</code>) and an in-memory EF Core database, so no test touches GitHub or LocalDB. It covers disclosure: advisory-first routing in <code>NoticeService</code>, the CLI notify pass and the Findings page Send button, the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency are not yet test-proven: see <a href="docs/BIBLE.md">docs/BIBLE.md</a> section 7 and <a href="docs/rfc/0001-verification-harness.md">docs/rfc/0001-verification-harness.md</a>.</p>
+<p><code>v2/Tests/OpenCredentials.Tests</code> (NUnit + bUnit) runs against a fake GitHub API (an in-process <code>HttpMessageHandler</code>) and an in-memory EF Core database, so no test touches GitHub or LocalDB. It covers disclosure: advisory-first routing in <code>NoticeService</code>, the CLI notify pass and the Findings page Send button, the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency are not yet test-proven: see <a href="docs/BIBLE.md">docs/BIBLE.md</a> section 7 and <a href="docs/rfc/0001-verification-harness.md">docs/rfc/0001-verification-harness.md</a>.</p>
 <h2 id="limitations">Limitations</h2>
 <ul>
 <li>It does not retrieve, retain or transmit any credential.</li>
