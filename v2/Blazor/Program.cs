@@ -4,6 +4,14 @@ using Microsoft.EntityFrameworkCore;
 using MindAttic.Vault.Configuration;
 using MindAttic.Vault.DependencyInjection;
 
+if (MindAttic.Vault.Settings.Manifest.SettingsManifestCommand.Switch is var manifestSwitch
+    && args.Contains(manifestSwitch, StringComparer.OrdinalIgnoreCase))
+{
+    // Install step: import today's appsettings values once and write the manifest MindAttic Vault renders.
+    OpenCredentialsSettings.Load(new ConfigurationBuilder().AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: true).Build());
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Cloud-native configuration chain. Lower sources first; later sources win.
@@ -20,9 +28,9 @@ builder.Services.AddSingleton<GitHubTokenProvider>();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-var connectionString =
-    builder.Configuration.GetConnectionString("OpenCredentials")
-    ?? Settings.ResolveConnectionString();
+// Settings are edited in MindAttic.Vault.Desktop; today's appsettings values were imported once.
+var settings = OpenCredentialsSettings.Load(builder.Configuration);
+var connectionString = settings.DatabaseConnection;
 
 builder.Services.AddDbContextFactory<OpenCredentialsContext>(opts =>
     opts.UseSqlServer(connectionString));
@@ -45,16 +53,7 @@ builder.Services.AddSingleton<GitHubClient>(sp =>
     return new GitHubClient(token);
 });
 
-builder.Services.AddSingleton<NoticeConfig>(sp =>
-{
-    var cfg = sp.GetRequiredService<IConfiguration>();
-    var section = cfg.GetSection("OpenCredentials");
-    var def = NoticeConfig.Default;
-    return new NoticeConfig(
-        Channel: section["NoticeChannel"] ?? def.Channel,
-        Title: section["NoticeTitle"] ?? def.Title,
-        Body: section["NoticeBody"] ?? def.Body);
-});
+builder.Services.AddSingleton(settings.ToNotice());
 
 builder.Services.AddScoped<NoticeService>(sp => new NoticeService(
     sp.GetRequiredService<Db>(),

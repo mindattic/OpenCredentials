@@ -46,6 +46,21 @@
     </p>
 </section>
 
+<section class="panel">
+    <h2>App settings</h2>
+    <p class="muted">
+        The database and the disclosure-notice template are edited in MindAttic Vault (OpenCredentials tab);
+        the GitHub token is in Vault's Tokens credentials. The dashboard reads them when it starts.
+    </p>
+    <div class="actions">
+        <button class="btn" @onclick="OpenVault">Open in MindAttic Vault</button>
+        @if (_vaultMissing)
+        {
+            <span class="muted small">MindAttic Vault isn't installed here. <a href="@VaultLink">Open it from this link</a> on the PC that has it.</span>
+        }
+    </div>
+</section>
+
 <style>
     .panel {
         max-width: 900px;
@@ -107,6 +122,12 @@
 </style>
 
 @code {
+    private bool _vaultMissing;
+    private static string VaultLink => MindAttic.Vault.Launch.VaultSettings.Link(OpenCredentialsSettings.AppId);
+
+    // Runs on the server, which is the user's PC for this local dashboard, so it reaches Vault.Desktop's local pipe.
+    private void OpenVault() => _vaultMissing = !MindAttic.Vault.Launch.VaultSettings.Open(OpenCredentialsSettings.AppId);
+
     private Db.ScannerControlSnapshot? _ctrl;
     private int _findingsCount;
     private int _scannedCount;

@@ -14,9 +14,9 @@ public static class Settings
         "Server=(localdb)\\MSSQLLocalDB;Database=OpenCredentials;" +
         "Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False";
 
+    /// <summary><c>OPENCREDS_DB</c> when set, else the database in MindAttic Vault (OpenCredentials tab).</summary>
     public static string ResolveConnectionString() =>
-        Environment.GetEnvironmentVariable("OPENCREDS_DB")
-            ?? DefaultConnectionString;
+        OpenCredentialsSettings.ResolveConnection(OpenCredentialsSettings.Load());
 
     public static string ConfigPath
     {
