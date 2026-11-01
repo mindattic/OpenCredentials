@@ -89,3 +89,5 @@ Dependency-ordered toward a test-proven, IRB-defensible pipeline:
 | OC-T25 | 2026-10-20 | docs | open | Publish OpenCredentials docs to GitHub Pages via the shared Agency DocFX pipeline: run adopt-docs-site.ps1 (README.md as home page, docs/*.md as articles, API reference only where the code builds in CI), enable Pages with build_type=workflow, set the repo homepage URL, retire tools/build-readme.ps1 and README.htm, confirm the docs Actions run is green and https://mindattic.github.io/OpenCredentials/ returns 200. Depends on MAT-T8. | — |
 | OC-T26 | 2026-10-22 | docs | closed | Update USER_STORIES.md | — |
 | OC-T27 | 2026-10-24 | docs | closed | Update USER_STORIES.md | — |
+| OC-T28 | 2026-10-31 | feature | closed | LAMP: move OpenCredentials's app-level settings and keys to MindAttic.Vault.Desktop (manifest, LoadOrSeed, shared named keys, cog opens Vault) | 40e0a5b LampSettingsTests (122/122) |
+| OC-T29 | 2026-10-31 | docs | closed | Update USER_STORIES.md | — |
