@@ -5,6 +5,11 @@ findings.htm
 findings.html
 .env
 
+# Legacy SQLite findings store (and any local SQLite db): never tracked (OC-T33).
+*.db
+*.db-wal
+*.db-shm
+
 # Defensive: the real settings.json lives in %APPDATA% (outside the
 # repo). This catches anyone who drops a copy next to the code.
 settings.json

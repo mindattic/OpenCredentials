@@ -6,7 +6,7 @@
 <title>OpenCredentials</title>
 <meta name="description" content="Public-service credential-leak detection for GitHub: find exposed API keys and connection strings, file a courtesy notice with the repo owner, and measure whether the leak gets fixed, without ever storing the secret.">
 <meta name="generator" content="MindAttic Codex build-readme.ps1">
-<meta name="generated" content="2026-10-03">
+<meta name="generated" content="2026-11-03">
 <style>:root{
   --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;
   --border:#30363d;
@@ -386,7 +386,7 @@ dotnet run --project v2/Cli -- --include-passwords --loop 1h</code></pre>
 <h3 id="findingsdb-and-findingshtm">findings.db and findings.htm</h3>
 <p>Two artifacts at the repo root are not part of the current v2 persistence path:</p>
 <ul>
-<li><code>findings.db</code>, <code>findings.db-shm</code>, <code>findings.db-wal</code>: a legacy, essentially empty SQLite database from the SQLite era. Current persistence is SQL Server LocalDB only, configured in <a href="v2/Shared/Settings.cs">v2/Shared/Settings.cs</a>. These files are tracked in git because they predate the <code>.gitignore</code> rule. Do not treat them as live data.</li>
+<li><code>findings.db</code>, <code>findings.db-shm</code>, <code>findings.db-wal</code>: a legacy, essentially empty SQLite database from the SQLite era. Current persistence is SQL Server LocalDB only, configured in <a href="v2/Shared/Settings.cs">v2/Shared/Settings.cs</a>. They are no longer tracked in git (<code>.gitignore</code> excludes <code>*.db</code>, <code>*.db-wal</code>, <code>*.db-shm</code>); a local copy may still exist. Do not treat them as live data.</li>
 <li><code>findings.htm</code>: a committed historical snapshot of the report that <a href="v2/Cli/Report.cs">v2/Cli/Report.cs</a> regenerates on every pass (path set by <code>--report</code>). Regenerate it locally by running the CLI; <code>.gitignore</code> keeps future regenerations out of git.</li>
 </ul>
 <h2 id="project-layout">Project layout</h2>
@@ -424,7 +424,7 @@ dotnet run --project v2/Cli -- --include-passwords --loop 1h</code></pre>
 │                                 USER_STORIES, digest, data/, rfc/)
 ├── tools/                        codex.ps1 (digest + doctor), build-readme.ps1
 ├── screenshots/                  internal UI reference captures (not published here)
-├── findings.db / .db-shm / .db-wal   legacy SQLite artifact
+├── findings.db / .db-shm / .db-wal   legacy SQLite artifact (untracked, local only)
 ├── findings.htm                  last committed HTML report snapshot
 ├── run.bat                       double-click launcher for the web UI
 └── OpenCredentials.sln           Shared + Cli + Blazor</code></pre>
@@ -485,7 +485,7 @@ dotnet run --project v2/Cli -- --include-passwords --loop 1h</code></pre>
 <p>This repository has no LICENSE file; all rights are reserved.</p>
 <p>Part of <a href="https://mindattic.com">MindAttic</a> — see more projects at <a href="https://github.com/mindattic">github.com/mindattic</a>. Related: <a href="https://github.com/mindattic/MindAttic.Vault">MindAttic.Vault</a> (token resolution).</p>
 
-    <p class="codex-footer">Generated 2026-10-03 by the shared MindAttic Codex engine (<code>codex-standard/build-readme.ps1</code>) from <code>README.md</code>. Edit the Markdown source, not this file.</p>
+    <p class="codex-footer">Generated 2026-11-03 by the shared MindAttic Codex engine (<code>codex-standard/build-readme.ps1</code>) from <code>README.md</code>. Edit the Markdown source, not this file.</p>
   </main>
 </div>
 <script>(function(){

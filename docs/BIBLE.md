@@ -107,7 +107,7 @@ Build/test evidence recorded 2026-10-03 (dotnet SDK 10.0.400, TFM net9.0, Window
 
 - **Build: GREEN.** `dotnet build OpenCredentials.sln -c Release` → **Build succeeded, 0 Warning(s), 0 Error(s)** (all four projects: `Shared` → `net9.0/OpenCredentials.Shared.dll`, `Cli` → `net9.0/opencreds.dll`, `Blazor` → `net9.0/OpenCredentials.Blazor.dll`, `Tests` → `net9.0/OpenCredentials.Tests.dll`).
 - **Tests: 14 passed, 0 failed.** `dotnet test OpenCredentials.sln` runs [`v2/Tests/OpenCredentials.Tests.csproj`](../v2/Tests/OpenCredentials.Tests.csproj) (NUnit + bUnit) against a fake GitHub API (in-process `HttpMessageHandler`) and an in-memory EF Core database — no network, no LocalDB. Coverage is disclosure only: advisory-first routing (`NoticeServiceDisclosureTests`, `NotifyPassTests`, `FindingsPageTests`), the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency stories remain `🟡`.
-- **Runtime evidence:** the `--headless` one-shot CLI mode is runnable and CI-shaped (exits non-zero on a failed pass). Persistence is SQL Server LocalDB; the tracked root files `findings.db*` (SQLite) and `findings.htm` are not read by v2.
+- **Runtime evidence:** the `--headless` one-shot CLI mode is runnable and CI-shaped (exits non-zero on a failed pass). Persistence is SQL Server LocalDB; the root files `findings.db*` (legacy SQLite, untracked and gitignored since OC-T33) and `findings.htm` are not read by v2.
 
 > `tools/codex.ps1 doctor` checks that every file path cited in this bible exists on disk.
 

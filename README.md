@@ -237,7 +237,7 @@ The rate-limit handler respects `Retry-After`, `X-RateLimit-Remaining` and `X-Ra
 
 Two artifacts at the repo root are not part of the current v2 persistence path:
 
-- `findings.db`, `findings.db-shm`, `findings.db-wal`: a legacy, essentially empty SQLite database from the SQLite era. Current persistence is SQL Server LocalDB only, configured in [v2/Shared/Settings.cs](v2/Shared/Settings.cs). These files are tracked in git because they predate the `.gitignore` rule. Do not treat them as live data.
+- `findings.db`, `findings.db-shm`, `findings.db-wal`: a legacy, essentially empty SQLite database from the SQLite era. Current persistence is SQL Server LocalDB only, configured in [v2/Shared/Settings.cs](v2/Shared/Settings.cs). They are no longer tracked in git (`.gitignore` excludes `*.db`, `*.db-wal`, `*.db-shm`); a local copy may still exist. Do not treat them as live data.
 - `findings.htm`: a committed historical snapshot of the report that [v2/Cli/Report.cs](v2/Cli/Report.cs) regenerates on every pass (path set by `--report`). Regenerate it locally by running the CLI; `.gitignore` keeps future regenerations out of git.
 
 ## Project layout
@@ -277,7 +277,7 @@ OpenCredentials/
 │                                 USER_STORIES, digest, data/, rfc/)
 ├── tools/                        codex.ps1 (digest + doctor), build-readme.ps1
 ├── screenshots/                  internal UI reference captures (not published here)
-├── findings.db / .db-shm / .db-wal   legacy SQLite artifact
+├── findings.db / .db-shm / .db-wal   legacy SQLite artifact (untracked, local only)
 ├── findings.htm                  last committed HTML report snapshot
 ├── run.bat                       double-click launcher for the web UI
 └── OpenCredentials.sln           Shared + Cli + Blazor
