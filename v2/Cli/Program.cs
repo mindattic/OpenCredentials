@@ -175,21 +175,25 @@ static async Task RunLoopAsync(Scraper scraper, string[]? providerArr,
 
 static int ParseDuration(string s)
 {
+    const int MaxLoopSeconds = 4_294_967;
     // Accepts plain seconds ("60") or suffix forms: "30s", "5m", "1h".
     if (string.IsNullOrEmpty(s)) return 0;
     var last = s[^1];
     var seconds = char.IsDigit(last)
         ? int.Parse(s)
-        : int.Parse(s[..^1]) * last switch
+        : checked(int.Parse(s[..^1]) * last switch
         {
             's' or 'S' => 1,
             'm' or 'M' => 60,
             'h' or 'H' => 3600,
             'd' or 'D' => 86400,
             _ => throw new ArgumentException($"bad duration: {s}"),
-        };
+        });
     // A negative interval would throw inside Task.Delay and crash the loop.
     if (seconds < 0) throw new ArgumentException($"duration must not be negative: {s}");
+    // So would one past Task.Delay's ceiling (uint.MaxValue - 1 ms, ~49.7 days).
+    if (seconds > MaxLoopSeconds)
+        throw new ArgumentException($"duration must be at most {MaxLoopSeconds}s (~49 days): {s}");
     return seconds;
 }
 

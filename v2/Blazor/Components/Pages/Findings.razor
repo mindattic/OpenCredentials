@@ -321,6 +321,12 @@ else
                 ? $"opened {result.IssueHtmlUrl}"
                 : $"failed: {result.Error}";
         }
+        catch (Exception ex)
+        {
+            // An unhandled exception in an event handler tears down the
+            // Blazor Server circuit; surface it in the status line instead.
+            _status = $"failed: {ex.Message}";
+        }
         finally
         {
             _busy = false;

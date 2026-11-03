@@ -127,6 +127,11 @@ public sealed class GitHubClient : IDisposable
         var payload = await resp.Content.ReadFromJsonAsync<ContentsResponse>(
             cancellationToken: ct);
         if (payload is null) return new RefetchResult(RefetchStatus.FetchFailed, "", null);
+        // Files over 1 MB come back with encoding "none" and no content, and
+        // a corrupt body fails to decode. Either way we did not see the file,
+        // so it must not be re-hashed as empty content and recorded "removed".
+        if (!IsDecodable(payload))
+            return new RefetchResult(RefetchStatus.FetchFailed, "", payload.Sha);
         var content = ToResult(payload);
         return new RefetchResult(RefetchStatus.Present, content.Content, content.CommitSha);
     }
@@ -197,6 +202,15 @@ public sealed class GitHubClient : IDisposable
         resp.Headers.Contains("Retry-After")
         || (resp.Headers.TryGetValues("X-RateLimit-Remaining", out var r)
             && r.FirstOrDefault() == "0");
+
+    private static bool IsDecodable(ContentsResponse payload)
+    {
+        if (payload.Encoding != "base64") return false;
+        if (string.IsNullOrEmpty(payload.Content)) return true; // genuinely empty file
+        var cleaned = payload.Content.Replace("\n", "").Replace("\r", "");
+        var buffer = new byte[(cleaned.Length * 3 + 3) / 4];
+        return Convert.TryFromBase64String(cleaned, buffer, out _);
+    }
 
     private static FileContentResult ToResult(ContentsResponse payload)
     {

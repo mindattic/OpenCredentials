@@ -80,8 +80,20 @@ public sealed class NoticeService
 
         var title = Render(_config.Title, finding);
         var body = Render(_config.Body, finding);
-        var result = await _client.OpenIssueAsync(
-            finding.RepoFullName, title, body, ct);
+        IssueResult result;
+        try
+        {
+            result = await _client.OpenIssueAsync(
+                finding.RepoFullName, title, body, ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested
+            && ex is HttpRequestException or TaskCanceledException)
+        {
+            // Network error / HttpClient timeout: record a failed notice so
+            // the pass continues and the finding shows Retry, instead of the
+            // exception aborting the notify pass (or the Blazor circuit).
+            result = new IssueResult(false, null, null, ex.Message);
+        }
 
         var notice = new Notice(
             KeySha256: finding.KeySha256,
@@ -154,8 +166,11 @@ public sealed class NoticeService
             advisory = await _client.TryOpenSecurityAdvisoryAsync(
                 finding.RepoFullName, summary, description, ct);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (!ct.IsCancellationRequested
+            && ex is HttpRequestException or TaskCanceledException)
         {
+            // Includes HttpClient's timeout (TaskCanceledException): a failed
+            // private attempt, retried privately — never a public fallback.
             advisory = new AdvisoryResult(false, null, null, ex.Message);
         }
 

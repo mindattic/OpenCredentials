@@ -129,11 +129,22 @@ public sealed class Scraper
                         }
                     }
                 }
-                catch (HttpRequestException e)
+                catch (Exception e) when (!ct.IsCancellationRequested
+                    && e is HttpRequestException or TaskCanceledException
+                        or System.Text.Json.JsonException)
                 {
+                    // HttpClient's 30s timeout surfaces as TaskCanceledException
+                    // and a malformed body as JsonException; both are transient
+                    // fetch failures and must not leave the claim in place.
                     db.ReleaseScan(repo, path);
                     fetched--;
                     hb.WriteLine($"[warn] fetch failed: {e.Message}");
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    // Shutdown mid-fetch: the file was never scanned.
+                    db.ReleaseScan(repo, path);
+                    throw;
                 }
 
                 await Task.Delay(TimeSpan.FromMilliseconds(500), ct);
@@ -297,7 +308,21 @@ public sealed class Scraper
             if (ct.IsCancellationRequested) break;
             if (!patternByProvider.TryGetValue(f.Provider, out var pat)) continue;
 
-            var refetch = await _client.RefetchAsync(f.RepoFullName, f.FilePath, ct);
+            RefetchResult refetch;
+            try
+            {
+                refetch = await _client.RefetchAsync(f.RepoFullName, f.FilePath, ct);
+            }
+            catch (Exception e) when (!ct.IsCancellationRequested
+                && e is HttpRequestException or TaskCanceledException
+                    or System.Text.Json.JsonException)
+            {
+                // Record it rather than abort the pass: an unchecked finding
+                // sorts first, so one bad file would otherwise kill every
+                // later recheck pass at the same spot.
+                hb.WriteLine($"[warn] recheck fetch failed: {e.Message}");
+                refetch = new RefetchResult(RefetchStatus.FetchFailed, "", null);
+            }
             string status;
             string? commitSha = refetch.CommitSha;
 
@@ -318,7 +343,7 @@ public sealed class Scraper
                     foreach (Match m in pat.Regex.Matches(refetch.Content))
                     {
                         var rawKey = m.Value;
-                        var (sha256, _, _) = Fingerprint(rawKey);
+                        var (sha256, _, _) = Fingerprint(rawKey, pat.ExposureType);
                         rawKey = null!;
                         if (sha256 == f.KeySha256) { status = "present"; break; }
                     }
@@ -362,7 +387,7 @@ public sealed class Scraper
                 // only to compute the SHA-256 hash and prefix; never
                 // logged, never persisted, never returned.
                 var rawKey = m.Value;
-                var (sha256, prefix, length) = Fingerprint(rawKey);
+                var (sha256, prefix, length) = Fingerprint(rawKey, pat.ExposureType);
                 rawKey = null!;
 
                 if (!localSeen.Add(sha256)) continue;
@@ -435,13 +460,33 @@ public sealed class Scraper
         _db.WriteScannerHeartbeat(label);
     }
 
-    private static (string sha256, string prefix, int length) Fingerprint(string key)
+    private static (string sha256, string prefix, int length) Fingerprint(
+        string key, string exposureType)
     {
         var bytes = Encoding.UTF8.GetBytes(key);
         var hash = SHA256.HashData(bytes);
         var sha = Convert.ToHexString(hash).ToLowerInvariant();
-        var prefixLen = Math.Min(16, key.Length);
-        var prefix = key[..prefixLen];
-        return (sha, prefix, key.Length);
+        return (sha, SafePrefix(key, exposureType), key.Length);
+    }
+
+    /// <summary>
+    /// The persisted, non-secret marker for a match (OC-LAW-1). A plaintext
+    /// password match IS the secret (the regex captures only the value), so
+    /// a 16-char prefix would store a short password whole; a connection
+    /// string's first 16 chars run into the user:password section. Those
+    /// types keep only their non-secret scheme.
+    /// </summary>
+    private static string SafePrefix(string key, string exposureType)
+    {
+        switch (exposureType)
+        {
+            case ExposureTypes.PlainTextPassword:
+                return "";
+            case ExposureTypes.ConnectionString:
+                var schemeEnd = key.IndexOf("://", StringComparison.Ordinal);
+                return schemeEnd < 0 ? "" : key[..(schemeEnd + 3)];
+            default:
+                return key[..Math.Min(16, key.Length)];
+        }
     }
 }
