@@ -27,7 +27,7 @@ OpenCredentials is a public-service credential-leak pipeline: it watches public 
 
 ## 3. What it is NOT {#OC-§3}
 
-- **NOT a credential store.** It does not retrieve, retain, transmit, log, or return any raw credential — only the SHA-256 fingerprint, a 16-char scheme prefix, and the public repo/file pointers.
+- **NOT a credential store.** It does not retrieve, retain, transmit, log, or return any raw credential — only the SHA-256 fingerprint, the provider's fixed public prefix (never any secret characters), and the public repo/file pointers.
 - **NOT a validator.** It never calls a provider API with a detected credential. Liveness is inferred from the recheck pass (does the hash still appear in the file?), never from authenticated probes.
 - **NOT an offensive-security tool.** No exploitation, no pentest, no use of any found secret.
 - **NOT a private-repo scanner.** Scope is public repositories indexed by GitHub Code Search only — no auth-walled endpoints, no cloning, no execution of repo code, no GitHub Enterprise.
@@ -66,7 +66,7 @@ EF entities are defined in [`v2/Shared/Entities.cs`](../v2/Shared/Entities.cs); 
 - **Finding** — one detected leak, keyed by `(KeySha256, RepoFullName, FilePath)`. Carries provider, exposure type, model hint, repo/file pointers, key prefix + length, first/last-seen. Never the secret.
 - **ScannedFile** — a `(repo, path)` claim row; the atomic unit of concurrency-safe work distribution between scanners.
 - **Notice** — a disclosure record keyed by `(KeySha256, RepoFullName, FilePath, Channel)` with status `sent`/`failed`. `Channel` is `github_issue` (public courtesy issue) or `github_advisory` (private security advisory).
-- **RemediationCheck** — a time-stamped recheck result per finding (`present`/`removed`/`repo_gone`/`file_gone`/`fetch_failed`).
+- **RemediationCheck** — a time-stamped recheck result per finding (`present`/`removed`/`repo_gone`/`file_gone`/`fetch_failed`/`blocked` — `blocked` is a non-rate-limit 403 and is not rechecked again).
 - **ExposureType** — the broad category lookup (`ApiKey`, `ConnectionString`, `PrivateKey`, `PlainTextPassword`), each with an `AutoInform` gate. Canon-as-data: see [`docs/data/exposure_types.json`](data/exposure_types.json).
 - **ScannerControl** — single-row cross-process control surface: `RequestedState`, heartbeat, current label.
 - **ProviderPattern** — one detection rule (provider, exposure type, regex, search needle, model hints) in [`v2/Shared/Patterns.cs`](../v2/Shared/Patterns.cs). Code-owned (regexes), keyed by `Provider`.
@@ -84,7 +84,7 @@ EF entities are defined in [`v2/Shared/Entities.cs`](../v2/Shared/Entities.cs); 
 > This project **inherits** the org-wide [MindAttic House Rules](../../MindAttic.HouseRules.md). Where a house law applies it is cited inline (`[see HOUSE-LAW-n]`) and NOT restated. The laws below are OpenCredentials-specific.
 
 ### {#OC-LAW-1} OC-LAW-1 — Non-retention is enforced in code, not policy
-The raw credential match exists in exactly one local variable, is reduced to `(SHA-256, 16-char prefix, length)` by `Scraper.Fingerprint`, and is dropped (`rawKey = null!`) before scope exit. It is never written to disk, logged, serialized, returned from a function, or persisted. This is the project's prime directive and an IRB-defensible property. (Extends org-wide secret hygiene — [see HOUSE-LAW-3](../../MindAttic.HouseRules.md#HOUSE-LAW-3).)
+The raw credential match exists in exactly one local variable, is reduced to `(SHA-256, public prefix, length)` by `Scraper.Fingerprint` — the public prefix is only the provider's fixed, documented token prefix (`ghp_`, `npm_`, `AKIA`, `sk-`, `key-`; nothing from the secret part), the URI scheme for a connection string, and empty for a plaintext password (`Patterns.PublicPrefix`), and is dropped (`rawKey = null!`) before scope exit. It is never written to disk, logged, serialized, returned from a function, or persisted. This is the project's prime directive and an IRB-defensible property. (Extends org-wide secret hygiene — [see HOUSE-LAW-3](../../MindAttic.HouseRules.md#HOUSE-LAW-3).)
 
 ### {#OC-LAW-2} OC-LAW-2 — Disclosure is opt-in per exposure type; review precedes action
 Every `ExposureType.AutoInform` defaults to `false`. The auto-notify pass (`Scraper.SendPendingNoticesAsync`) discloses ONLY for types a human has flipped on in the Web UI. Filing a public issue against an innocent repo is reputational harm, so review-then-act is the safe default. This is a project-specific specialization of [HOUSE-LAW-2 (soft-disable / reversible by default)](../../MindAttic.HouseRules.md#HOUSE-LAW-2).
@@ -130,7 +130,7 @@ A feature is **done** (`✅`) only when:
 - **Exposure type** — broad category of a leak: `ApiKey`, `ConnectionString`, `PrivateKey`, `PlainTextPassword`. Carries the `auto_inform` gate. Canon: [`docs/data/exposure_types.json`](data/exposure_types.json).
 - **Provider** — the specific source of a credential (`anthropic`, `aws-access-key`, `postgres-uri`, …); maps to one `ProviderPattern`.
 - **Finding** — a detected leak, identified by SHA-256 fingerprint + repo + file path. Never contains the secret.
-- **Fingerprint** — `(SHA-256 hex, 16-char scheme prefix, length)` computed from a raw match; the only thing persisted.
+- **Fingerprint** — `(SHA-256 hex, public prefix, length)` computed from a raw match; the only thing persisted. The public prefix is the provider's fixed token prefix, the URI scheme, or empty — never a character of the secret.
 - **Notice** — a disclosure sent to the leaker's repo: a courtesy GitHub issue (`github_issue`) or a private security advisory (`github_advisory`).
 - **Remediation check** — a re-fetch + re-hash that determines whether a previously-found leak is still present.
 - **auto_inform** — per-exposure-type boolean gate; when `false` (default) the CLI never auto-discloses findings of that type.

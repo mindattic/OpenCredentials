@@ -43,7 +43,7 @@ public sealed class GitHubClient : IDisposable
         {
             var url = $"/search/code?q={Uri.EscapeDataString(needle + " in:file")}&per_page={perPage}&page={page}";
             using var resp = await _http.GetAsync(url, ct);
-            if (IsRateLimited(resp))
+            if (await IsRateLimitedAsync(resp, ct))
             {
                 await HandleRateLimitAsync(resp, ct);
                 page--;
@@ -52,6 +52,13 @@ public sealed class GitHubClient : IDisposable
             if (resp.StatusCode == HttpStatusCode.UnprocessableEntity)
             {
                 // "Only the first 1000 search results are available"
+                yield break;
+            }
+            if (resp.StatusCode == HttpStatusCode.Forbidden)
+            {
+                // A 403 that is not a rate limit (token lacks access, search
+                // blocked): retrying the same page forever would hang the pass.
+                Console.Error.WriteLine($"[github] search refused (403, not rate-limited) for needle; skipping it this pass");
                 yield break;
             }
             resp.EnsureSuccessStatusCode();
@@ -71,11 +78,18 @@ public sealed class GitHubClient : IDisposable
         CodeSearchItem item, CancellationToken ct = default)
     {
         using var resp = await _http.GetAsync(item.Url, ct);
-        if (IsRateLimited(resp))
+        if (await IsRateLimitedAsync(resp, ct))
         {
             await HandleRateLimitAsync(resp, ct);
             // Transient: the caller must NOT treat this file as scanned.
             return new FileContentResult("", null, Ok: false);
+        }
+        if (resp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound
+            or HttpStatusCode.Gone or (HttpStatusCode)451)
+        {
+            // Blocked or gone, not transient: the caller keeps the file
+            // claimed instead of re-fetching it every pass.
+            return new FileContentResult("", null, Ok: false, Unavailable: true);
         }
         if (!resp.IsSuccessStatusCode)
         {
@@ -102,10 +116,16 @@ public sealed class GitHubClient : IDisposable
             path.Split('/').Select(Uri.EscapeDataString));
         var url = $"/repos/{repoFullName}/contents/{escapedPath}";
         using var resp = await _http.GetAsync(url, ct);
-        if (IsRateLimited(resp))
+        if (await IsRateLimitedAsync(resp, ct))
         {
             await HandleRateLimitAsync(resp, ct);
             return new RefetchResult(RefetchStatus.FetchFailed, "", null);
+        }
+        if (resp.StatusCode == HttpStatusCode.Forbidden)
+        {
+            // Not a rate limit (e.g. "Repository access blocked"): record it
+            // as blocked so the recheck pass stops asking every run.
+            return new RefetchResult(RefetchStatus.Blocked, "", null);
         }
         if (resp.StatusCode == HttpStatusCode.NotFound)
         {
@@ -165,7 +185,7 @@ public sealed class GitHubClient : IDisposable
     /// Returns null when the feature is unavailable for this repo (404 = not
     /// enabled, 403 = not permitted, 422 = rejected) so the caller can fall
     /// back to a public issue. A null return is NOT an error — it means "use
-    /// the issue fallback." A 403/429 that carries rate-limit headers is a
+    /// the issue fallback." A 429, or a 403 GitHub marks as a rate limit, is a
     /// transient failure, not "unavailable", and is returned as a failed
     /// result so the caller retries the private channel instead of going public.
     /// </summary>
@@ -177,8 +197,7 @@ public sealed class GitHubClient : IDisposable
         var payload = new AdvisoryCreateRequest(summary, description, "medium");
         using var resp = await _http.PostAsJsonAsync(url, payload, ct);
 
-        var rateLimited = resp.StatusCode == HttpStatusCode.TooManyRequests
-            || (resp.StatusCode == HttpStatusCode.Forbidden && HasRateLimitSignal(resp));
+        var rateLimited = await IsRateLimitedAsync(resp, ct);
 
         // These codes mean "not available" — caller should fall back to issue.
         if (!rateLimited
@@ -198,7 +217,7 @@ public sealed class GitHubClient : IDisposable
         return new AdvisoryResult(true, created?.HtmlUrl, created?.GhsaId, null);
     }
 
-    private static bool HasRateLimitSignal(HttpResponseMessage resp) =>
+    private static bool HasRateLimitHeader(HttpResponseMessage resp) =>
         resp.Headers.Contains("Retry-After")
         || (resp.Headers.TryGetValues("X-RateLimit-Remaining", out var r)
             && r.FirstOrDefault() == "0");
@@ -233,13 +252,26 @@ public sealed class GitHubClient : IDisposable
     }
 
     /// <summary>
-    /// GitHub signals a hit rate limit as 403 (primary + most secondary
-    /// limits) or 429 (Too Many Requests — also used for secondary limits).
-    /// Both must be funneled through HandleRateLimitAsync rather than
+    /// GitHub signals a hit rate limit as 429, or as 403 only when it says so:
+    /// <c>X-RateLimit-Remaining: 0</c>, a <c>Retry-After</c> header, or the
+    /// secondary-rate-limit message in the body. Any other 403 (blocked repo,
+    /// no access) is NOT a rate limit — sleeping and retrying it every pass
+    /// just stalls the scan; callers treat it as blocked/unavailable.
+    /// Rate limits are funneled through HandleRateLimitAsync rather than
     /// surfaced as hard failures, or a long-running scan aborts on a 429.
     /// </summary>
-    private static bool IsRateLimited(HttpResponseMessage resp) =>
-        resp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests;
+    private static async Task<bool> IsRateLimitedAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
+        if (resp.StatusCode == HttpStatusCode.TooManyRequests) return true;
+        if (resp.StatusCode != HttpStatusCode.Forbidden) return false;
+        if (HasRateLimitHeader(resp)) return true;
+        string body;
+        try { body = await resp.Content.ReadAsStringAsync(ct); }
+        catch (HttpRequestException) { return false; }
+        // GetAsync/PostAsync buffer the body, so callers can still read it.
+        return body.Contains("secondary rate limit", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("rate limit exceeded", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static async Task HandleRateLimitAsync(HttpResponseMessage resp, CancellationToken ct)
     {
@@ -296,8 +328,11 @@ public sealed class GitHubClient : IDisposable
 /// did not complete (rate-limited, non-success, or unparseable) — distinct
 /// from a successful fetch that happened to return empty content. Callers
 /// use it to decide whether the file may be treated as scanned.
+/// <c>Unavailable</c> is true when GitHub refused or no longer serves the file
+/// (non-rate-limit 403, 404, 410, 451): not transient, so the file stays claimed.
 /// </summary>
-public sealed record FileContentResult(string Content, string? CommitSha, bool Ok = true);
+public sealed record FileContentResult(string Content, string? CommitSha, bool Ok = true,
+    bool Unavailable = false);
 
 public enum RefetchStatus
 {
@@ -305,6 +340,8 @@ public enum RefetchStatus
     FileGone,
     RepoGone,
     FetchFailed,
+    /// <summary>A 403 that is not a rate limit (e.g. repository access blocked).</summary>
+    Blocked,
 }
 
 public sealed record RefetchResult(RefetchStatus Status, string Content, string? CommitSha);

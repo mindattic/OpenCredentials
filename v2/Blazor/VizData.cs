@@ -268,12 +268,12 @@ public sealed class VizData
         IReadOnlyList<Finding> findings,
         Dictionary<(string, string, string), RemediationCheck> latest)
     {
-        // Order here is the contract with app.css .slice-0..5 (gray/red/
+        // Order here is the contract with app.css .slice-0..6 (gray/red/
         // green/...). Each status is pinned to its index so the color stays
         // semantically correct after the zero-count filter reorders slices.
         var statusOrder = new[]
         {
-            "unchecked", "present", "removed", "file_gone", "repo_gone", "fetch_failed",
+            "unchecked", "present", "removed", "file_gone", "repo_gone", "fetch_failed", "blocked",
         };
         var statusCounts = statusOrder.ToDictionary(s => s, _ => 0);
         foreach (var f in findings)

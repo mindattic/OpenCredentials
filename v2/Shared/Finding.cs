@@ -2,7 +2,7 @@
 
 /// <summary>
 /// One metadata record per detected leak. No raw key is stored — only a
-/// SHA-256 hash and a non-sensitive 16-char prefix (scheme marker only).
+/// SHA-256 hash and the provider's fixed public prefix (marker only).
 /// Timestamps are owned by the DB (first_seen_utc / last_seen_utc).
 /// </summary>
 public sealed record Finding(

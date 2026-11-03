@@ -12,7 +12,7 @@ namespace OpenCredentials;
 /// EF DbContext is not thread-safe, so each method opens and disposes its
 /// own context via IDbContextFactory. Reads use AsNoTracking() — no
 /// long-lived change tracking needed for what is effectively a snapshot UI.
-/// No raw API keys are persisted (only SHA-256 + 16-char prefix).
+/// No raw API keys are persisted (only SHA-256 + the provider's public prefix).
 /// </summary>
 public sealed class Db : IDisposable
 {
@@ -44,7 +44,65 @@ public sealed class Db : IDisposable
         }
         var db = new Db(owned);
         db.SeedExposureTypes();
+        db.RepairStoredData();
         return db;
+    }
+
+    /// <summary>
+    /// Idempotent startup repair of rows written by older builds:
+    /// <list type="bullet">
+    /// <item>KeyPrefix held up to the first 16 characters of the raw match —
+    ///   a short password whole, a connection string's user:password, an API
+    ///   key's secret characters. Rewritten to what the scanner writes today
+    ///   (<see cref="Patterns.RedactStoredPrefix"/>; OC-LAW-1).</item>
+    /// <item>A public-issue fallback was recorded under the github_advisory
+    ///   channel when NoticeChannel was github_advisory; it is re-keyed to
+    ///   github_issue (unless an issue row already exists for the finding).</item>
+    /// </list>
+    /// Returns the number of rows changed. Never logs a prefix value.
+    /// </summary>
+    public (int prefixes, int notices) RepairStoredData()
+    {
+        using var ctx = _factory.CreateDbContext();
+        var prefixes = 0;
+        foreach (var f in ctx.Findings.Where(f => f.KeyPrefix != null && f.KeyPrefix != "").ToList())
+        {
+            var redacted = Patterns.RedactStoredPrefix(f.Provider, f.ExposureType, f.KeyPrefix);
+            if (redacted == f.KeyPrefix) continue;
+            f.KeyPrefix = redacted;
+            prefixes++;
+        }
+
+        var notices = 0;
+        var misfiled = ctx.Notices
+            .Where(n => n.Channel == NoticeService.AdvisoryChannel && n.IssueNumber != null)
+            .ToList();
+        foreach (var n in misfiled)
+        {
+            var hasIssueRow = ctx.Notices.Any(x => x.KeySha256 == n.KeySha256
+                && x.RepoFullName == n.RepoFullName && x.FilePath == n.FilePath
+                && x.Channel == NoticeService.IssueChannel);
+            ctx.Notices.Remove(n);
+            if (!hasIssueRow)
+            {
+                ctx.Notices.Add(new NoticeEntity
+                {
+                    KeySha256 = n.KeySha256,
+                    RepoFullName = n.RepoFullName,
+                    FilePath = n.FilePath,
+                    Channel = NoticeService.IssueChannel,
+                    IssueNumber = n.IssueNumber,
+                    IssueHtmlUrl = n.IssueHtmlUrl,
+                    SentAtUtc = n.SentAtUtc,
+                    Status = n.Status,
+                    Error = n.Error,
+                });
+            }
+            notices++;
+        }
+
+        if (prefixes + notices > 0) ctx.SaveChanges();
+        return (prefixes, notices);
     }
 
     /// <summary>
@@ -56,7 +114,9 @@ public sealed class Db : IDisposable
         {
             ctx.Database.Migrate();
         }
-        new Db(factory).SeedExposureTypes();
+        var db = new Db(factory);
+        db.SeedExposureTypes();
+        db.RepairStoredData();
     }
 
     private void SeedExposureTypes()

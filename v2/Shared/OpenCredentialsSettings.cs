@@ -23,7 +23,7 @@ public sealed class OpenCredentialsSettings
     public string DatabaseConnection { get; set; } = Settings.DefaultConnectionString;
 
     [Setting("Notice channel", Group = "Disclosure notices", Order = 1,
-        Help = "How a leak is disclosed to the repo owner: github_issue opens an issue, github_advisory records an advisory notice.")]
+        Help = "Kept for compatibility. Disclosure is always a private advisory first, falling back to a public issue when the repo has private reporting off; each notice is recorded under the channel actually used.")]
     [SettingChoices("github_issue", "github_advisory")]
     public string NoticeChannel { get; set; } = NoticeConfig.Default.Channel;
 

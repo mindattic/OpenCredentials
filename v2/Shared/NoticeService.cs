@@ -71,7 +71,7 @@ public sealed class NoticeService
         Finding finding, CancellationToken ct = default)
     {
         var existing = _db.GetNotice(
-            finding.KeySha256, finding.RepoFullName, finding.FilePath, _config.Channel);
+            finding.KeySha256, finding.RepoFullName, finding.FilePath, IssueChannel);
         if (existing is { Status: "sent" })
         {
             return new NoticeSendResult(
@@ -99,7 +99,7 @@ public sealed class NoticeService
             KeySha256: finding.KeySha256,
             RepoFullName: finding.RepoFullName,
             FilePath: finding.FilePath,
-            Channel: _config.Channel,
+            Channel: IssueChannel,
             IssueNumber: result.Number,
             IssueHtmlUrl: result.HtmlUrl,
             SentAtUtc: DateTime.UtcNow.ToString("O"),
@@ -110,7 +110,7 @@ public sealed class NoticeService
         if (existing is not null)
         {
             _db.DeleteNotice(
-                finding.KeySha256, finding.RepoFullName, finding.FilePath, _config.Channel);
+                finding.KeySha256, finding.RepoFullName, finding.FilePath, IssueChannel);
         }
         _db.InsertNotice(notice);
 
@@ -119,6 +119,13 @@ public sealed class NoticeService
     }
 
     public const string AdvisoryChannel = "github_advisory";
+
+    /// <summary>
+    /// Channel of a public courtesy issue. An issue is always recorded as an
+    /// issue — even when the configured NoticeChannel is github_advisory and
+    /// the issue is the fallback — so a notices row's channel says what was sent.
+    /// </summary>
+    public const string IssueChannel = "github_issue";
 
     /// <summary>
     /// The disclosure path both front doors use (CLI notify pass and the
@@ -150,7 +157,7 @@ public sealed class NoticeService
                 true, null, existingAdvisory.IssueHtmlUrl, null, Skipped: true);
         }
         var existingIssue = _db.GetNotice(
-            finding.KeySha256, finding.RepoFullName, finding.FilePath, _config.Channel);
+            finding.KeySha256, finding.RepoFullName, finding.FilePath, IssueChannel);
         if (existingIssue is { Status: "sent" })
         {
             return new NoticeSendResult(

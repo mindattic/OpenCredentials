@@ -7,7 +7,7 @@ namespace OpenCredentials;
 /// <summary>
 /// Self-contained HTML report generator. Emits a static file with inline
 /// CSS and no JavaScript. No raw API keys appear — each record is
-/// represented only by the SHA-256 hash and the 16-char scheme prefix
+/// represented only by the SHA-256 hash and the provider's public prefix
 /// already stored in Finding.
 /// </summary>
 public static class Report
@@ -171,7 +171,7 @@ public static class Report
   <div class="subtitle">Metadata-only research dataset · generated {{E(generated)}} · {{total}} findings</div>
 </header>
 <main>
-  <div class="banner">Non-retention: no raw API keys appear in this report. Each key is represented only by a SHA-256 hash and a 16-char scheme prefix.</div>
+  <div class="banner">Non-retention: no raw API keys appear in this report. Each key is represented only by a SHA-256 hash and the provider's public prefix.</div>
 
   <section>
     <h2>Summary</h2>

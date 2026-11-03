@@ -93,9 +93,12 @@ Console.CancelKeyPress += (_, e) =>
 
 using var client = new GitHubClient(token);
 using var db = Db.CreateForCli(connectionString);
+// The notify pass sends the same Vault-edited notice template the dashboard
+// does (OC-T28), not the built-in default.
+var noticeConfig = OpenCredentialsSettings.Load(cliConfig).ToNotice();
 var scraper = new Scraper(
     client, db, new FileInfo(reportPath),
-    maxPerProvider, maxRechecks, maxNotices, includePasswords);
+    maxPerProvider, maxRechecks, maxNotices, includePasswords, noticeConfig);
 var providerArr = providerFilter.Count > 0 ? providerFilter.ToArray() : null;
 
 // Default cadence when no explicit --loop and we're in a long-lived mode

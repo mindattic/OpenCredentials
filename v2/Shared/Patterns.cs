@@ -369,6 +369,105 @@ public static class Patterns
     public static ProviderPattern[] WithPasswords() =>
         All.Concat(PasswordPatterns).ToArray();
 
+    /// <summary>Longest KeyPrefix the Findings table holds (OpenCredentialsContext).</summary>
+    public const int MaxPrefixLength = 32;
+
+    /// <summary>
+    /// Each provider's fixed, publicly documented token prefix — the only part
+    /// of a match that may be persisted as KeyPrefix (OC-LAW-1). Nothing from
+    /// the random/secret part of a token is ever kept. Every value fits
+    /// <see cref="MaxPrefixLength"/>; a provider missing here stores "".
+    /// </summary>
+    private static readonly Dictionary<string, string[]> PublicPrefixes = new()
+    {
+        ["anthropic"] = ["sk-ant-api03-"],
+        ["openai"] = ["sk-proj-"],
+        ["openai-legacy"] = ["sk-"],
+        ["google-gemini"] = ["AIza"],
+        ["aws-access-key"] = ["AKIA"],
+        ["digitalocean-pat"] = ["dop_v1_"],
+        ["digitalocean-oauth"] = ["doo_v1_"],
+        ["github-pat-classic"] = ["ghp_"],
+        ["github-pat-fine"] = ["github_pat_"],
+        ["github-oauth"] = ["gho_"],
+        ["github-app-user"] = ["ghu_"],
+        ["github-app-server"] = ["ghs_"],
+        ["npm-token"] = ["npm_"],
+        ["pypi-token"] = ["pypi-"],
+        ["stripe-secret-live"] = ["sk_live_"],
+        ["stripe-restricted-live"] = ["rk_live_"],
+        ["shopify-private"] = ["shppa_"],
+        ["shopify-access"] = ["shpat_"],
+        ["square-access"] = ["sq0atp-"],
+        ["square-secret"] = ["sq0csp-"],
+        ["slack-bot"] = ["xoxb-"],
+        ["slack-user"] = ["xoxp-"],
+        ["slack-webhook"] = ["https://hooks.slack.com/"],
+        ["discord-webhook"] = ["https://discord.com/api/", "https://discordapp.com/api/"],
+        ["sendgrid"] = ["SG."],
+        ["mailgun"] = ["key-"],
+        ["twilio-sk"] = ["SK"],
+        ["jwt"] = ["eyJ"],
+        ["private-key-rsa"] = ["-----BEGIN RSA"],
+        ["private-key-openssh"] = ["-----BEGIN OPENSSH"],
+        ["private-key-ec"] = ["-----BEGIN EC"],
+        ["private-key-pgp"] = ["-----BEGIN PGP"],
+    };
+
+    /// <summary>
+    /// The persisted, non-secret marker for a raw match (OC-LAW-1).
+    /// PlainTextPassword: "" (the match IS the password). ConnectionString:
+    /// the URI scheme only ("postgres://"), never user:password. Everything
+    /// else: the provider's fixed public prefix ("ghp_", "AKIA", "sk-"), or ""
+    /// when the provider has none on record.
+    /// </summary>
+    public static string PublicPrefix(string provider, string exposureType, string value)
+    {
+        switch (exposureType)
+        {
+            case ExposureTypes.PlainTextPassword:
+                return "";
+            case ExposureTypes.ConnectionString:
+                return SchemeOf(value);
+            default:
+                if (!PublicPrefixes.TryGetValue(provider, out var prefixes)) return "";
+                foreach (var p in prefixes)
+                    if (value.StartsWith(p, StringComparison.Ordinal)) return p;
+                return "";
+        }
+    }
+
+    /// <summary>
+    /// Rewrites a KeyPrefix stored by an older build (up to the first 16
+    /// characters of the raw match) to what <see cref="PublicPrefix"/> writes
+    /// today. A stored value that is itself only part of a public prefix
+    /// (e.g. "https://hooks.sl") is kept, since all of it is public.
+    /// </summary>
+    public static string RedactStoredPrefix(string provider, string exposureType, string? stored)
+    {
+        if (string.IsNullOrEmpty(stored)) return "";
+        var redacted = PublicPrefix(provider, exposureType, stored);
+        if (redacted.Length > 0) return redacted;
+        if (exposureType is ExposureTypes.PlainTextPassword or ExposureTypes.ConnectionString)
+            return "";
+        return PublicPrefixes.TryGetValue(provider, out var prefixes)
+            && prefixes.Any(p => p.StartsWith(stored, StringComparison.Ordinal))
+            ? stored
+            : "";
+    }
+
+    private static string SchemeOf(string value)
+    {
+        var end = value.IndexOf("://", StringComparison.Ordinal);
+        if (end <= 0 || end + 3 > MaxPrefixLength) return "";
+        for (var i = 0; i < end; i++)
+        {
+            var ch = value[i];
+            if (!(char.IsAsciiLetterOrDigit(ch) || ch is '+' or '-' or '.')) return "";
+        }
+        return value[..(end + 3)];
+    }
+
     public static string? InferModel(string contextWindow, string[] hints)
     {
         foreach (var hint in hints)

@@ -19,7 +19,7 @@ public sealed record Notice(
 /// <summary>
 /// One remediation check. Append-only — the latest row per finding is the
 /// current status; the series is the time-to-revocation signal.
-/// Status: present | removed | file_gone | repo_gone | fetch_failed.
+/// Status: present | removed | file_gone | repo_gone | fetch_failed | blocked.
 /// </summary>
 public sealed record RemediationCheck(
     string KeySha256,

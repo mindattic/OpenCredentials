@@ -15,6 +15,7 @@ public sealed class Scraper
     private readonly int _maxRechecks;
     private readonly int _maxNotices;
     private readonly ProviderPattern[] _patterns;
+    private readonly NoticeConfig _noticeConfig;
     private Heartbeat? _hb;
 
     /// <summary>Delay between disclosures in the notify pass (tests set it to zero).</summary>
@@ -36,8 +37,12 @@ public sealed class Scraper
         int maxPerProvider,
         int maxRechecks,
         int maxNotices,
-        bool includePasswords)
+        bool includePasswords,
+        NoticeConfig? noticeConfig = null)
     {
+        // The notice template the CLI sends: the same Vault-edited template the
+        // dashboard uses (OC-T28); the built-in default only when none is given.
+        _noticeConfig = noticeConfig ?? NoticeConfig.Default;
         _client = client;
         _db = db;
         _reportFile = reportFile;
@@ -106,6 +111,14 @@ public sealed class Scraper
                 try
                 {
                     var result = await _client.FetchFileAsync(item, ct);
+                    if (result.Unavailable)
+                    {
+                        // Blocked / gone (a 403 that is not a rate limit, 404,
+                        // 451): keep the claim so the file is not re-fetched
+                        // every pass. Nothing was read, so nothing is recorded.
+                        hb.WriteLine($"[skip] unavailable: {repo}#{path}");
+                        continue;
+                    }
                     if (!result.Ok)
                     {
                         // Transient fetch failure (rate-limited / error).
@@ -198,7 +211,7 @@ public sealed class Scraper
         var hb = _hb!;
         await WaitWhilePausedAsync(hb, "notifying", ct);
         SetLabel(hb, "notifying");
-        var noticeSvc = new NoticeService(db, _client);
+        var noticeSvc = new NoticeService(db, _client, _noticeConfig);
         var findings = db.AllFindings();
         var latest = db.LatestRemediationChecks();
         var sentKeys = db.AllNotices()
@@ -267,7 +280,7 @@ public sealed class Scraper
 
     /// <summary>
     /// For each finding not already in a terminal remediation state
-    /// (removed | repo_gone), re-fetch the file and check whether the
+    /// (removed | repo_gone | blocked), re-fetch the file and check whether the
     /// original key_sha256 still hashes out of the current content.
     /// Caps the per-run work at _maxRechecks so a 10k-finding DB doesn't
     /// burn the whole API budget on one run.
@@ -287,7 +300,9 @@ public sealed class Scraper
             {
                 if (!latest.TryGetValue((f.KeySha256, f.RepoFullName, f.FilePath), out var prev))
                     return true;
-                return prev.Status is not ("removed" or "repo_gone");
+                // "blocked": GitHub refuses the file (non-rate-limit 403);
+                // re-asking every pass only burns API budget.
+                return prev.Status is not ("removed" or "repo_gone" or "blocked");
             })
             .OrderBy(f =>
                 latest.TryGetValue((f.KeySha256, f.RepoFullName, f.FilePath), out var prev)
@@ -337,13 +352,16 @@ public sealed class Scraper
                 case RefetchStatus.FetchFailed:
                     status = "fetch_failed";
                     break;
+                case RefetchStatus.Blocked:
+                    status = "blocked";
+                    break;
                 default:
                     // Re-hash matches, look for our key_sha256.
                     status = "removed";
                     foreach (Match m in pat.Regex.Matches(refetch.Content))
                     {
                         var rawKey = m.Value;
-                        var (sha256, _, _) = Fingerprint(rawKey, pat.ExposureType);
+                        var (sha256, _, _) = Fingerprint(rawKey, pat);
                         rawKey = null!;
                         if (sha256 == f.KeySha256) { status = "present"; break; }
                     }
@@ -387,7 +405,7 @@ public sealed class Scraper
                 // only to compute the SHA-256 hash and prefix; never
                 // logged, never persisted, never returned.
                 var rawKey = m.Value;
-                var (sha256, prefix, length) = Fingerprint(rawKey, pat.ExposureType);
+                var (sha256, prefix, length) = Fingerprint(rawKey, pat);
                 rawKey = null!;
 
                 if (!localSeen.Add(sha256)) continue;
@@ -460,33 +478,18 @@ public sealed class Scraper
         _db.WriteScannerHeartbeat(label);
     }
 
+    /// <summary>
+    /// Reduces a raw match to what may be persisted (OC-LAW-1): SHA-256,
+    /// the provider's fixed public prefix only (<see cref="Patterns.PublicPrefix"/>
+    /// — nothing from the secret part, "" for passwords, the scheme for
+    /// connection strings), and the length.
+    /// </summary>
     private static (string sha256, string prefix, int length) Fingerprint(
-        string key, string exposureType)
+        string key, ProviderPattern pattern)
     {
         var bytes = Encoding.UTF8.GetBytes(key);
         var hash = SHA256.HashData(bytes);
         var sha = Convert.ToHexString(hash).ToLowerInvariant();
-        return (sha, SafePrefix(key, exposureType), key.Length);
-    }
-
-    /// <summary>
-    /// The persisted, non-secret marker for a match (OC-LAW-1). A plaintext
-    /// password match IS the secret (the regex captures only the value), so
-    /// a 16-char prefix would store a short password whole; a connection
-    /// string's first 16 chars run into the user:password section. Those
-    /// types keep only their non-secret scheme.
-    /// </summary>
-    private static string SafePrefix(string key, string exposureType)
-    {
-        switch (exposureType)
-        {
-            case ExposureTypes.PlainTextPassword:
-                return "";
-            case ExposureTypes.ConnectionString:
-                var schemeEnd = key.IndexOf("://", StringComparison.Ordinal);
-                return schemeEnd < 0 ? "" : key[..(schemeEnd + 3)];
-            default:
-                return key[..Math.Min(16, key.Length)];
-        }
+        return (sha, Patterns.PublicPrefix(pattern.Provider, pattern.ExposureType, key), key.Length);
     }
 }

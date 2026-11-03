@@ -151,6 +151,7 @@ table.findings .path { font-family: ui-monospace, "SF Mono", Menlo, monospace; f
 .badge.rem-file_gone { background: #d1fae5; color: #065f46; }
 .badge.rem-repo_gone { background: #d1fae5; color: #065f46; }
 .badge.rem-fetch_failed { background: #f3f4f6; color: #4b5563; }
+.badge.rem-blocked { background: #fef3c7; color: #92400e; }
 
 .btn {
   border: 1px solid #d1d5db;
@@ -231,6 +232,7 @@ table.findings .path { font-family: ui-monospace, "SF Mono", Menlo, monospace; f
 .svg-chart .slice-3 { fill: #059669; }     /* file_gone */
 .svg-chart .slice-4 { fill: #10b981; }     /* repo_gone */
 .svg-chart .slice-5 { fill: #9ca3af; }     /* fetch_failed */
+.svg-chart .slice-6 { fill: #d97706; }     /* blocked */
 
 .svg-chart .donut-center { font-size: 22px; font-weight: 700; fill: #111827; }
 .svg-chart .donut-sub { font-size: 10px; fill: #6b7280; }
@@ -268,6 +270,7 @@ table.findings .path { font-family: ui-monospace, "SF Mono", Menlo, monospace; f
 .legend .key.slice-3 { background: #059669; }
 .legend .key.slice-4 { background: #10b981; }
 .legend .key.slice-5 { background: #9ca3af; }
+.legend .key.slice-6 { background: #d97706; }
 
 .donut-wrap { display: flex; gap: 16px; align-items: center; }
 
