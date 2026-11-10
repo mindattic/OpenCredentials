@@ -91,3 +91,9 @@ Dependency-ordered toward a test-proven, IRB-defensible pipeline:
 | OC-T27 | 2026-10-24 | docs | closed | Update USER_STORIES.md | — |
 | OC-T28 | 2026-10-31 | feature | closed | LAMP: move OpenCredentials's app-level settings and keys to MindAttic.Vault.Desktop (manifest, LoadOrSeed, shared named keys, cog opens Vault) | 40e0a5b LampSettingsTests (122/122) |
 | OC-T29 | 2026-10-31 | docs | closed | Update USER_STORIES.md | — |
+| OC-T30 | 2026-11-02 | docs | open | Adopt MindAttic.Agency docs-site pipeline, publish README to GitHub Pages (HOUSE-LAW-14) | — |
+| OC-T31 | 2026-11-02 | fix | closed | Bughunt sweep, two passes: find and fix real bugs across tracked source (user request 2026-11-02) | — |
+| OC-T32 | 2026-11-02 | fix | closed | Fix the open items the 2026-11-02 bughunt left for decision (redact password/conn-string/API-key prefixes + scrub DB, CLI notice template, github_advisory issue fallback, 403 handling) | — |
+| OC-T33 | 2026-11-03 | fix | closed | Untrack empty findings.db/-wal/-shm and gitignore db files | 420ee5c d2b9b09 |
+| OC-T34 | 2026-11-10 | chore | closed | Crash recovery: commit the command-catalog sync (.agent/commands/*.md) and regenerated docs/USER_STORIES.md left uncommitted by the session crash | — |
+| OC-T35 | 2026-11-10 | chore | open | Crash recovery: commit the command-catalog sync (.agent/commands/*.md) and regenerated docs/USER_STORIES.md left uncommitted by the session crash | — |
