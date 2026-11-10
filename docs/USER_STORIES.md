@@ -96,4 +96,5 @@ Dependency-ordered toward a test-proven, IRB-defensible pipeline:
 | OC-T32 | 2026-11-02 | fix | closed | Fix the open items the 2026-11-02 bughunt left for decision (redact password/conn-string/API-key prefixes + scrub DB, CLI notice template, github_advisory issue fallback, 403 handling) | — |
 | OC-T33 | 2026-11-03 | fix | closed | Untrack empty findings.db/-wal/-shm and gitignore db files | 420ee5c d2b9b09 |
 | OC-T34 | 2026-11-10 | chore | closed | Crash recovery: commit the command-catalog sync (.agent/commands/*.md) and regenerated docs/USER_STORIES.md left uncommitted by the session crash | — |
-| OC-T35 | 2026-11-10 | chore | open | Crash recovery: commit the command-catalog sync (.agent/commands/*.md) and regenerated docs/USER_STORIES.md left uncommitted by the session crash | — |
+| OC-T35 | 2026-11-10 | chore | closed | Crash recovery: commit the command-catalog sync (.agent/commands/*.md) and regenerated docs/USER_STORIES.md left uncommitted by the session crash | — |
+| OC-T36 | 2026-11-10 | chore | open | Crash recovery / fleet sync: commit the regenerated docs/USER_STORIES.md left uncommitted after other tickets closed elsewhere | — |
