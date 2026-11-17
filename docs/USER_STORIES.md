@@ -86,15 +86,17 @@ Dependency-ordered toward a test-proven, IRB-defensible pipeline:
 | OC-T22 | 2026-10-16 | feature | open | Log to MindAttic.Log (3.0.0): every app/CLI entry point writes to the standalone MindAttic.Log.db Vault assigns this app (VaultPaths.LoggingDbPath, MindAttic.Vault 6.0.0) through Serilog's WriteToMindAtticLog, tagged with its Component; log startup, user actions that change data, failures and unhandled exceptions (UI thread, AppDomain, unobserved tasks); tests point the log at a temp file. Pattern: MindAttic.Workflow WorkflowLog (M.FLOW-T92), MindAttic.Orchestrator OrchestratorLog | M.FLOW-T92 |
 | OC-T23 | 2026-10-16 | docs | closed | Update USER_STORIES.md | — |
 | OC-T24 | 2026-10-19 | chore | wont-do | Convert tracked source files to LF line endings via .gitattributes, per HOUSE-LAW-13 (low priority) | — |
-| OC-T25 | 2026-10-20 | docs | open | Publish OpenCredentials docs to GitHub Pages via the shared Agency DocFX pipeline: run adopt-docs-site.ps1 (README.md as home page, docs/*.md as articles, API reference only where the code builds in CI), enable Pages with build_type=workflow, set the repo homepage URL, retire tools/build-readme.ps1 and README.htm, confirm the docs Actions run is green and https://mindattic.github.io/OpenCredentials/ returns 200. Depends on MAT-T8. | — |
+| OC-T25 | 2026-10-20 | docs | closed | Publish OpenCredentials docs to GitHub Pages via the shared Agency DocFX pipeline: run adopt-docs-site.ps1 (README.md as home page, docs/*.md as articles, API reference only where the code builds in CI), enable Pages with build_type=workflow, set the repo homepage URL, retire tools/build-readme.ps1 and README.htm, confirm the docs Actions run is green and https://mindattic.github.io/OpenCredentials/ returns 200. Depends on MAT-T8. | — |
 | OC-T26 | 2026-10-22 | docs | closed | Update USER_STORIES.md | — |
 | OC-T27 | 2026-10-24 | docs | closed | Update USER_STORIES.md | — |
 | OC-T28 | 2026-10-31 | feature | closed | LAMP: move OpenCredentials's app-level settings and keys to MindAttic.Vault.Desktop (manifest, LoadOrSeed, shared named keys, cog opens Vault) | 40e0a5b LampSettingsTests (122/122) |
 | OC-T29 | 2026-10-31 | docs | closed | Update USER_STORIES.md | — |
-| OC-T30 | 2026-11-02 | docs | open | Adopt MindAttic.Agency docs-site pipeline, publish README to GitHub Pages (HOUSE-LAW-14) | — |
+| OC-T30 | 2026-11-02 | docs | closed | Adopt MindAttic.Agency docs-site pipeline, publish README to GitHub Pages (HOUSE-LAW-14) | — |
 | OC-T31 | 2026-11-02 | fix | closed | Bughunt sweep, two passes: find and fix real bugs across tracked source (user request 2026-11-02) | — |
 | OC-T32 | 2026-11-02 | fix | closed | Fix the open items the 2026-11-02 bughunt left for decision (redact password/conn-string/API-key prefixes + scrub DB, CLI notice template, github_advisory issue fallback, 403 handling) | — |
 | OC-T33 | 2026-11-03 | fix | closed | Untrack empty findings.db/-wal/-shm and gitignore db files | 420ee5c d2b9b09 |
 | OC-T34 | 2026-11-10 | chore | closed | Crash recovery: commit the command-catalog sync (.agent/commands/*.md) and regenerated docs/USER_STORIES.md left uncommitted by the session crash | — |
 | OC-T35 | 2026-11-10 | chore | closed | Crash recovery: commit the command-catalog sync (.agent/commands/*.md) and regenerated docs/USER_STORIES.md left uncommitted by the session crash | — |
-| OC-T36 | 2026-11-10 | chore | open | Crash recovery / fleet sync: commit the regenerated docs/USER_STORIES.md left uncommitted after other tickets closed elsewhere | — |
+| OC-T36 | 2026-11-10 | chore | closed | Crash recovery / fleet sync: commit the regenerated docs/USER_STORIES.md left uncommitted after other tickets closed elsewhere | — |
+| OC-T37 | 2026-11-10 | chore | closed | Adopt the shared docs-site pipeline: turn on GitHub Pages | — |
+| OC-T38 | 2026-11-17 | docs | closed | Update USER_STORIES.md | — |
