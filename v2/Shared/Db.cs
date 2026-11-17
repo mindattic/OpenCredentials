@@ -601,7 +601,7 @@ public sealed class Db : IDisposable
         public InlineFactory(string cs)
         {
             _opts = new DbContextOptionsBuilder<OpenCredentialsContext>()
-                .UseSqlServer(cs).Options;
+                .UseSqlServer(cs, sql => sql.EnableRetryOnFailure()).Options;
         }
         public OpenCredentialsContext CreateDbContext() => new(_opts);
         public void Dispose() { }

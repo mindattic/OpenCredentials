@@ -33,7 +33,7 @@ var settings = OpenCredentialsSettings.Load(builder.Configuration);
 var connectionString = settings.DatabaseConnection;
 
 builder.Services.AddDbContextFactory<OpenCredentialsContext>(opts =>
-    opts.UseSqlServer(connectionString));
+    opts.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure()));
 
 // Db wraps the context factory; scoped matches Blazor Server's per-circuit
 // lifetime but the underlying factory is a singleton.

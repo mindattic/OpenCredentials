@@ -117,7 +117,7 @@ public class OpenCredentialsContextDesignFactory : IDesignTimeDbContextFactory<O
     public OpenCredentialsContext CreateDbContext(string[] args)
     {
         var opts = new DbContextOptionsBuilder<OpenCredentialsContext>()
-            .UseSqlServer(Settings.DefaultConnectionString)
+            .UseSqlServer(Settings.DefaultConnectionString, sql => sql.EnableRetryOnFailure())
             .Options;
         return new OpenCredentialsContext(opts);
     }
