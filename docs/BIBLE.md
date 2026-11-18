@@ -14,7 +14,7 @@ updated: 2026-10-03
 
 ## 1. The one sentence {#OC-§1}
 
-OpenCredentials is a public-service credential-leak pipeline: it watches public GitHub for exposed credentials, fingerprints each match (SHA-256) **without ever retaining the secret**, optionally discloses it to the leaker's own repo (a private vulnerability report, else a courtesy issue), and tracks whether the leak gets remediated — a CLI scanner and a Blazor Server review UI sharing one SQL Server LocalDB.
+OpenCredentials is a public-service credential-leak pipeline: it watches public GitHub for exposed credentials, fingerprints each match (SHA-256) **without ever retaining the secret**, optionally discloses it to the leaker's own repo (a private vulnerability report, else a courtesy issue), and tracks whether the leak gets remediated — a CLI scanner and a Blazor Server review UI sharing one SQL Server database (Azure SQL by default).
 
 ## 2. The product promise {#OC-§2}
 
@@ -22,7 +22,7 @@ OpenCredentials is a public-service credential-leak pipeline: it watches public 
 - **Non-retention at the code level.** A raw regex match lives in one local variable, is hashed to SHA-256 + a short scheme prefix, and goes out of scope. It is never written to disk, logged, serialized, or returned from a function. See [`§5 LAW-1`](#OC-LAW-1).
 - **Review precedes disclosure.** Every exposure type defaults to `auto_inform = false`. The auto-notify pass does nothing until a human flips a category on in the Web UI. See [`§5 LAW-2`](#OC-LAW-2).
 - **The research artifact and the operator are the same binary.** Aggregate measurements (leak rate per provider, time-to-remediate, notice-to-remediation conversion) fall out of the pipeline for free.
-- **One database, two front doors, race-safe.** The CLI scanner (`opencreds`) and the Blazor UI read/write the same `OpenCredentials` LocalDB via EF Core; multiple scanners can run while a human reviews. Pause/resume is coordinated through a single `ScannerControl` row. See [`§5 LAW-5`](#OC-LAW-5).
+- **One database, two front doors, race-safe.** The CLI scanner (`opencreds`) and the Blazor UI read/write the same `OpenCredentials` database (Azure SQL by default) via EF Core; multiple scanners can run while a human reviews. Pause/resume is coordinated through a single `ScannerControl` row. See [`§5 LAW-5`](#OC-LAW-5).
 - **Loops forever, never crashes on a 403.** Default mode scans on a 60s cadence, paces itself against GitHub's 30 req/min Code Search limit, and absorbs rate-limit headers. See [`§5 LAW-3`](#OC-LAW-3).
 
 ## 3. What it is NOT {#OC-§3}
@@ -52,7 +52,7 @@ OpenCredentials is a public-service credential-leak pipeline: it watches public 
    │ /recheck    │        │ OpenCredentialsContext (EF Core)   │        │ /Settings    │
    └──────┬──────┘        └───────────────┬──────────────┘        └──────┬───────┘
           │                               │                              │
-          └──────────────► SQL Server LocalDB `OpenCredentials` ◄───────┘
+          └──────────────►    Azure SQL `OpenCredentials`    ◄───────┘
                                (ScannerControl row coordinates pause/resume)
 ```
 
@@ -96,7 +96,7 @@ All GitHub rate-limit handling funnels through `GitHubClient.HandleRateLimitAsyn
 The tool never calls a provider API with a detected credential. Remediation liveness is inferred solely by re-fetching the public file and re-hashing (`RecheckRemediationsAsync`), never by an authenticated probe. Do not rotate multiple PATs to evade rate limits (GitHub AUP).
 
 ### {#OC-LAW-5} OC-LAW-5 — One engine, many front doors, one race-safe database
-The CLI and Blazor app register the identical `Shared` engine and read/write the same SQL Server LocalDB. Concurrent scanners coordinate through atomic `ClaimScan` (PK-uniqueness) and the single `ScannerControl` row; pause/resume works from either surface. (Project realization of [HOUSE-LAW-6](../../MindAttic.HouseRules.md#HOUSE-LAW-6).)
+The CLI and Blazor app register the identical `Shared` engine and read/write the same SQL Server database (Azure SQL by default). Concurrent scanners coordinate through atomic `ClaimScan` (PK-uniqueness) and the single `ScannerControl` row; pause/resume works from either surface. (Project realization of [HOUSE-LAW-6](../../MindAttic.HouseRules.md#HOUSE-LAW-6).)
 
 ### {#OC-LAW-6} OC-LAW-6 — Credentials resolve through MindAttic.Vault
 The GitHub PAT is resolved by `GitHubTokenProvider` via the `MindAttic.Vault` configuration source (then User Secrets, then `GITHUB_TOKEN`, then a deprecated legacy file). No token is committed; the repo `.gitignore` defends against a stray `settings.json`. (Direct application of [HOUSE-LAW-3](../../MindAttic.HouseRules.md#HOUSE-LAW-3).)
@@ -106,8 +106,8 @@ The GitHub PAT is resolved by `GitHubTokenProvider` via the `MindAttic.Vault` co
 Build/test evidence recorded 2026-10-03 (dotnet SDK 10.0.400, TFM net9.0, Windows PowerShell 5.1):
 
 - **Build: GREEN.** `dotnet build OpenCredentials.sln -c Release` → **Build succeeded, 0 Warning(s), 0 Error(s)** (all four projects: `Shared` → `net9.0/OpenCredentials.Shared.dll`, `Cli` → `net9.0/opencreds.dll`, `Blazor` → `net9.0/OpenCredentials.Blazor.dll`, `Tests` → `net9.0/OpenCredentials.Tests.dll`).
-- **Tests: 14 passed, 0 failed.** `dotnet test OpenCredentials.sln` runs [`v2/Tests/OpenCredentials.Tests.csproj`](../v2/Tests/OpenCredentials.Tests.csproj) (NUnit + bUnit) against a fake GitHub API (in-process `HttpMessageHandler`) and an in-memory EF Core database — no network, no LocalDB. Coverage is disclosure only: advisory-first routing (`NoticeServiceDisclosureTests`, `NotifyPassTests`, `FindingsPageTests`), the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency stories remain `🟡`.
-- **Runtime evidence:** the `--headless` one-shot CLI mode is runnable and CI-shaped (exits non-zero on a failed pass). Persistence is SQL Server LocalDB; the root files `findings.db*` (legacy SQLite, untracked and gitignored since OC-T33) and `findings.htm` are not read by v2.
+- **Tests: 14 passed, 0 failed.** `dotnet test OpenCredentials.sln` runs [`v2/Tests/OpenCredentials.Tests.csproj`](../v2/Tests/OpenCredentials.Tests.csproj) (NUnit + bUnit) against a fake GitHub API (in-process `HttpMessageHandler`) and an in-memory EF Core database — no network, no database server. Coverage is disclosure only: advisory-first routing (`NoticeServiceDisclosureTests`, `NotifyPassTests`, `FindingsPageTests`), the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency stories remain `🟡`.
+- **Runtime evidence:** the `--headless` one-shot CLI mode is runnable and CI-shaped (exits non-zero on a failed pass). Persistence is SQL Server (the `OpenCredentials` database in Azure SQL by default); the root files `findings.db*` (legacy SQLite, untracked and gitignored since OC-T33) and `findings.htm` are not read by v2.
 
 > `tools/codex.ps1 doctor` checks that every file path cited in this bible exists on disk.
 

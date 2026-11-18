@@ -3,7 +3,7 @@
 namespace OpenCredentials;
 
 /// <summary>
-/// Persistence facade. Backed by EF Core against SQL Server LocalDB.
+/// Persistence facade. Backed by EF Core against SQL Server (Azure SQL by default).
 /// The CLI scraper (`fractions`) is the writer and runs continuously;
 /// the Blazor app reads from the same database. Method names mirror the
 /// previous SQLite implementation so call sites in Scraper / NoticeService

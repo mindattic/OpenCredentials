@@ -6,13 +6,14 @@ namespace OpenCredentials;
 public static class Settings
 {
     /// <summary>
-    /// LocalDB connection used by both the CLI scraper and the Blazor app.
-    /// Override in Web's appsettings.json (ConnectionStrings:OpenCredentials) or
-    /// via the OPENCREDS_DB env var for the CLI.
+    /// The default database for both the CLI scraper and the Blazor app: <c>OpenCredentials</c> on the
+    /// MindAttic Azure SQL server, opened with the developer's own <c>az login</c> (no secret in the
+    /// string, no local SQL Server). Override it in MindAttic Vault (OpenCredentials tab), in Web's
+    /// appsettings.json (ConnectionStrings:OpenCredentials) or via the OPENCREDS_DB env var for the CLI.
     /// </summary>
     public const string DefaultConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=OpenCredentials;" +
-        "Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False";
+        "Server=tcp:sql-mindattic-f65744.database.windows.net,1433;Database=OpenCredentials;" +
+        "Authentication=Active Directory Default;Encrypt=True;Connect Timeout=60;MultipleActiveResultSets=True;";
 
     /// <summary><c>OPENCREDS_DB</c> when set, else the database in MindAttic Vault (OpenCredentials tab).</summary>
     public static string ResolveConnectionString() =>

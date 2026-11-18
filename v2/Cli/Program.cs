@@ -278,8 +278,8 @@ static void PrintHelp()
                            auto_inform=true (default 25). --no-notify off.
         --max-per-provider N caps per-needle file fetches per pass (default 50).
 
-        Persistence is SQL Server LocalDB (OpenCredentials database) by
-        default; --connection overrides for any other SQL Server instance,
+        Persistence is the OpenCredentials database in Azure SQL by default,
+        opened with your az login; --connection overrides for any other SQL Server,
         as does the OPENCREDS_DB env var. The Blazor app reads from the
         same database; both can run concurrently. The .htm report is
         regenerated each pass from the full DB.

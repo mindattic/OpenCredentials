@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Design;
 namespace OpenCredentials;
 
 /// <summary>
-/// EF Core context backed by SQL Server LocalDB. The CLI scraper writes
+/// EF Core context backed by SQL Server (Azure SQL by default). The CLI scraper writes
 /// continuously; the Blazor UI reads. Composite keys mirror the original
 /// SQLite schema so dedup behavior is identical.
 /// </summary>
@@ -108,8 +108,9 @@ public class OpenCredentialsContext : DbContext
 }
 
 /// <summary>
-/// Lets `dotnet ef` build the context against the default LocalDB
-/// connection without needing the Web project's host. Production code
+/// Lets `dotnet ef` build the context without needing the Web project's host. It opens the same
+/// database the CLI does: OPENCREDS_DB when set, else the MindAttic Vault setting, whose default is
+/// <see cref="Settings.DefaultConnectionString"/>. Production code
 /// uses AddDbContext / AddDbContextFactory with the appsettings string.
 /// </summary>
 public class OpenCredentialsContextDesignFactory : IDesignTimeDbContextFactory<OpenCredentialsContext>
@@ -117,7 +118,7 @@ public class OpenCredentialsContextDesignFactory : IDesignTimeDbContextFactory<O
     public OpenCredentialsContext CreateDbContext(string[] args)
     {
         var opts = new DbContextOptionsBuilder<OpenCredentialsContext>()
-            .UseSqlServer(Settings.DefaultConnectionString, sql => sql.EnableRetryOnFailure())
+            .UseSqlServer(Settings.ResolveConnectionString(), sql => sql.EnableRetryOnFailure())
             .Options;
         return new OpenCredentialsContext(opts);
     }

@@ -28,5 +28,5 @@ Flags the user may ask for — pass them after the `--` in the dotnet command:
 Notes:
 - Headless mode obeys `ScannerControl.RequestedState`, so the Blazor UI's pause button works without restarting.
 - Auto-notify defaults to off for every exposure type; the loop scans + rechecks but won't open issues until a category is flipped on in the Web UI.
-- Persistence is SQL Server LocalDB (`OpenCredentials` database) — the Blazor app can run concurrently against the same DB.
+- Persistence is the `OpenCredentials` database in Azure SQL (signed in with your `az login`) — the Blazor app can run concurrently against the same DB.
 - To stop: kill the background shell (or use the user's pause control). Do not auto-stop on the user's behalf.

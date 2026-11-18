@@ -2,7 +2,7 @@
 
 Public-service credential-leak detection for GitHub: find exposed API keys and connection strings, file a courtesy notice with the repo owner, and measure whether the leak gets fixed, without ever storing the secret.
 
-[![.NET 9](https://img.shields.io/badge/.NET-9-512BD4)](https://dotnet.microsoft.com/) [![Blazor Server](https://img.shields.io/badge/UI-Blazor%20Server-5C2D91)](#web-ui) [![SQL Server LocalDB](https://img.shields.io/badge/storage-SQL%20Server%20LocalDB-CC2927)](#how-it-works) [![Status active](https://img.shields.io/badge/status-active-2ea44f)](docs/BIBLE.md) [![License none](https://img.shields.io/badge/license-none-lightgrey)](#license)
+[![.NET 9](https://img.shields.io/badge/.NET-9-512BD4)](https://dotnet.microsoft.com/) [![Blazor Server](https://img.shields.io/badge/UI-Blazor%20Server-5C2D91)](#web-ui) [![Azure SQL](https://img.shields.io/badge/storage-Azure%20SQL-CC2927)](#how-it-works) [![Status active](https://img.shields.io/badge/status-active-2ea44f)](docs/BIBLE.md) [![License none](https://img.shields.io/badge/license-none-lightgrey)](#license)
 
 ```text
                 ┌──────────────────────────────────────────────────┐
@@ -53,7 +53,7 @@ OpenCredentials runs on your own machine against public GitHub; there is no host
 
 ## Quick start
 
-Prerequisites: the .NET 9 SDK, SQL Server LocalDB, and a fine-grained GitHub PAT with public-repo read (plus `Issues: write` if you want notices filed).
+Prerequisites: the .NET 9 SDK, the Azure CLI signed in (`az login`) with an account that can open the `OpenCredentials` database on `sql-mindattic-f65744.database.windows.net` (no local SQL Server is needed), and a fine-grained GitHub PAT with public-repo read (plus `Issues: write` if you want notices filed).
 
 ```powershell
 git clone https://github.com/mindattic/OpenCredentials.git
@@ -69,11 +69,11 @@ dotnet run --project v2/Cli -- --headless
 .\run.bat
 ```
 
-The CLI writes findings to the LocalDB `OpenCredentials` database and regenerates `findings.htm`. `run.bat` starts the web UI and opens `http://localhost:50677/` in your browser once it is listening. Nothing is sent to anyone until you turn on auto-inform for a category or press Send on a finding.
+The CLI writes findings to the `OpenCredentials` database in Azure SQL and regenerates `findings.htm`. `run.bat` starts the web UI and opens `http://localhost:50677/` in your browser once it is listening. Nothing is sent to anyone until you turn on auto-inform for a category or press Send on a finding.
 
 ## How it works
 
-Each invocation runs three phases in order and stores everything in the SQL Server LocalDB `OpenCredentials` database (override with `--connection` or the `OPENCREDS_DB` env var):
+Each invocation runs three phases in order and stores everything in the `OpenCredentials` database in Azure SQL (override with `--connection` or the `OPENCREDS_DB` env var):
 
 1. Scan. Query GitHub Code Search for each pattern's needle, fetch matching files, run the regexes, and store metadata plus the SHA-256 of each match.
 2. Notify. For exposure types with auto-inform on, disclose unnotified findings (private advisory first, courtesy issue as fallback), up to `--max-notices` per run.
@@ -89,7 +89,7 @@ The default mode loops every 60 seconds with an interactive menu; `--headless` d
    │ /recheck    │        │ OpenCredentialsContext (EF)  │        │ /Settings    │
    └──────┬──────┘        └───────────────┬──────────────┘        └──────┬───────┘
           │                               │                              │
-          └──────────────► SQL Server LocalDB `OpenCredentials` ◄────────┘
+          └──────────────►    Azure SQL `OpenCredentials`    ◄────────┘
                                (ScannerControl row coordinates pause/resume)
 ```
 
@@ -150,7 +150,7 @@ dotnet run --project v2/Cli -- --headless --loop 5m
 # Headless one-shot: single pass and exit (CI-friendly)
 dotnet run --project v2/Cli -- --headless
 
-# Override the database (defaults to SQL Server LocalDB)
+# Override the database (defaults to OpenCredentials in Azure SQL, signed in with your az login)
 dotnet run --project v2/Cli -- --connection "Server=...;Database=..."
 
 # Opt into PlainTextPassword patterns (high false-positive rate)
@@ -186,7 +186,7 @@ Default URLs are `https://localhost:50676` and `http://localhost:50677` (see `v2
 - Visualizations. KPI strip (exposed LLM credentials, filed issues, remediated, percent remediated, average time to remediate, average check-backs until remediated) plus charts: cumulative findings vs notices vs remediations, time-to-remediate distribution, check-backs histogram, by-provider breakdown and remediation-status donut. Same live polling.
 - Settings. Scanner pause and resume (the same `ScannerControl` row the CLI menu uses) plus auto-inform toggles per exposure type. The scanner heartbeat age shows whether the sidecar is alive.
 
-The web app reads `ConnectionStrings:OpenCredentials` from `appsettings.json` (defaults to the LocalDB `OpenCredentials` database). Override the notice template with `OpenCredentials:NoticeChannel`, `NoticeTitle` and `NoticeBody`; otherwise the in-code default in [v2/Shared/NoticeService.cs](v2/Shared/NoticeService.cs) is used.
+The web app reads `ConnectionStrings:OpenCredentials` from `appsettings.json` (defaults to the `OpenCredentials` database in Azure SQL). Override the notice template with `OpenCredentials:NoticeChannel`, `NoticeTitle` and `NoticeBody`; otherwise the in-code default in [v2/Shared/NoticeService.cs](v2/Shared/NoticeService.cs) is used.
 
 ### run.bat
 
@@ -225,7 +225,7 @@ The rate-limit handler respects `Retry-After`, `X-RateLimit-Remaining` and `X-Ra
 | --- | --- | --- |
 | Language | Python | C# on .NET 9 |
 | Status | Reference only; do not run | Current |
-| Storage | SQLite | SQL Server LocalDB |
+| Storage | SQLite | SQL Server (Azure SQL by default) |
 | Coverage | LLM keys only | LLM and cloud API keys, GitHub PATs, payment tokens, DB connection strings, PEM private keys, contextual passwords |
 | Disclosure | `disclosure.py` | `NoticeService`: private vulnerability report first, public courtesy issue as fallback |
 | Reporting | `report.py` (static HTML) | Live Blazor Server UI plus `Report.cs` HTML export |
@@ -237,7 +237,7 @@ The rate-limit handler respects `Retry-After`, `X-RateLimit-Remaining` and `X-Ra
 
 Two artifacts at the repo root are not part of the current v2 persistence path:
 
-- `findings.db`, `findings.db-shm`, `findings.db-wal`: a legacy, essentially empty SQLite database from the SQLite era. Current persistence is SQL Server LocalDB only, configured in [v2/Shared/Settings.cs](v2/Shared/Settings.cs). They are no longer tracked in git (`.gitignore` excludes `*.db`, `*.db-wal`, `*.db-shm`); a local copy may still exist. Do not treat them as live data.
+- `findings.db`, `findings.db-shm`, `findings.db-wal`: a legacy, essentially empty SQLite database from the SQLite era. Current persistence is SQL Server only (Azure SQL by default), configured in [v2/Shared/Settings.cs](v2/Shared/Settings.cs). They are no longer tracked in git (`.gitignore` excludes `*.db`, `*.db-wal`, `*.db-shm`); a local copy may still exist. Do not treat them as live data.
 - `findings.htm`: a committed historical snapshot of the report that [v2/Cli/Report.cs](v2/Cli/Report.cs) regenerates on every pass (path set by `--report`). Regenerate it locally by running the CLI; `.gitignore` keeps future regenerations out of git.
 
 ## Project layout
@@ -255,7 +255,7 @@ OpenCredentials/
 │   │   ├── GitHubClient.cs       Search, fetch, refetch, open issue, file private vulnerability report
 │   │   ├── GitHubTokenProvider.cs  MindAttic.Vault + env + legacy resolver
 │   │   ├── Patterns.cs           ProviderPattern[] + ExposureTypes
-│   │   ├── Settings.cs           LocalDB default + config paths
+│   │   ├── Settings.cs           Azure SQL default + config paths
 │   │   └── Migrations/           EF Core migrations
 │   ├── Cli/                      OpenCredentials.Cli (exe: opencreds)
 │   │   ├── Program.cs            Arg parsing, interactive + headless modes
@@ -295,7 +295,7 @@ dotnet build OpenCredentials.sln -c Release
 dotnet test OpenCredentials.sln
 ```
 
-`v2/Tests/OpenCredentials.Tests` (NUnit + bUnit) runs against a fake GitHub API (an in-process `HttpMessageHandler`) and an in-memory EF Core database, so no test touches GitHub or LocalDB. It covers disclosure: advisory-first routing in `NoticeService`, the CLI notify pass and the Findings page Send button, the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency are not yet test-proven: see [docs/BIBLE.md](docs/BIBLE.md) section 7 and [docs/rfc/0001-verification-harness.md](docs/rfc/0001-verification-harness.md).
+`v2/Tests/OpenCredentials.Tests` (NUnit + bUnit) runs against a fake GitHub API (an in-process `HttpMessageHandler`) and an in-memory EF Core database, so no test touches GitHub or a database server. It covers disclosure: advisory-first routing in `NoticeService`, the CLI notify pass and the Findings page Send button, the auto-inform gate, and notice idempotency. Detection, non-retention, remediation and concurrency are not yet test-proven: see [docs/BIBLE.md](docs/BIBLE.md) section 7 and [docs/rfc/0001-verification-harness.md](docs/rfc/0001-verification-harness.md).
 
 ## Limitations
 
