@@ -100,3 +100,6 @@ Dependency-ordered toward a test-proven, IRB-defensible pipeline:
 | OC-T36 | 2026-11-10 | chore | closed | Crash recovery / fleet sync: commit the regenerated docs/USER_STORIES.md left uncommitted after other tickets closed elsewhere | — |
 | OC-T37 | 2026-11-10 | chore | closed | Adopt the shared docs-site pipeline: turn on GitHub Pages | — |
 | OC-T38 | 2026-11-17 | docs | closed | Update USER_STORIES.md | — |
+| OC-T39 | 2026-11-17 | chore | open | Azure SQL migration: connection resiliency and Entra auth so the app runs against the Azure SQL free-offer database | — |
+| OC-T40 | 2026-11-18 | chore | open | Development defaults point at Azure SQL (sql-mindattic-f65744) instead of LocalDB, so no local SQL Server is needed to develop | — |
+| OC-T41 | 2026-11-18 | docs | closed | Update USER_STORIES.md | — |
