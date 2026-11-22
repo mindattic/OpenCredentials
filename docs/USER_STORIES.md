@@ -100,6 +100,10 @@ Dependency-ordered toward a test-proven, IRB-defensible pipeline:
 | OC-T36 | 2026-11-10 | chore | closed | Crash recovery / fleet sync: commit the regenerated docs/USER_STORIES.md left uncommitted after other tickets closed elsewhere | — |
 | OC-T37 | 2026-11-10 | chore | closed | Adopt the shared docs-site pipeline: turn on GitHub Pages | — |
 | OC-T38 | 2026-11-17 | docs | closed | Update USER_STORIES.md | — |
-| OC-T39 | 2026-11-17 | chore | open | Azure SQL migration: connection resiliency and Entra auth so the app runs against the Azure SQL free-offer database | — |
-| OC-T40 | 2026-11-18 | chore | open | Development defaults point at Azure SQL (sql-mindattic-f65744) instead of LocalDB, so no local SQL Server is needed to develop | — |
+| OC-T39 | 2026-11-17 | chore | closed | Azure SQL migration: connection resiliency and Entra auth so the app runs against the Azure SQL free-offer database | — |
+| OC-T40 | 2026-11-18 | chore | closed | Development defaults point at Azure SQL (sql-mindattic-f65744) instead of LocalDB, so no local SQL Server is needed to develop | — |
 | OC-T41 | 2026-11-18 | docs | closed | Update USER_STORIES.md | — |
+| OC-T42 | 2026-11-22 | feature | open | Add a shared OpenCredentials logging setup using Serilog WriteToMindAtticLog to VaultPaths.LoggingDbPath with Component tags, modeled on WorkflowLog/OrchestratorLog; tests point it at a temp file | — |
+| OC-T43 | 2026-11-22 | feature | open | Call the logging setup from every app/CLI entry point and log startup plus user actions that change data and failures | — |
+| OC-T44 | 2026-11-22 | feature | open | Log unhandled exceptions from UI thread, AppDomain and unobserved tasks, with a test using a temp log file | — |
+| OC-T45 | 2026-11-22 | docs | closed | 2026-11-22 morning | — |
