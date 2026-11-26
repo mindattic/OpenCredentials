@@ -69,7 +69,7 @@ dotnet run --project v2/Cli -- --headless
 .\run.bat
 ```
 
-The CLI writes findings to the `OpenCredentials` database in Azure SQL and regenerates `findings.htm`. `run.bat` starts the web UI and opens `http://localhost:50677/` in your browser once it is listening. Nothing is sent to anyone until you turn on auto-inform for a category or press Send on a finding.
+The CLI writes findings to the `OpenCredentials` database in Azure SQL and regenerates `findings.htm`. `run.bat` opens the run menu; `3` (Run Release) starts the deployed web UI at `http://localhost:50677/`. Nothing is sent to anyone until you turn on auto-inform for a category or press Send on a finding.
 
 ## How it works
 
@@ -190,10 +190,11 @@ The web app reads `ConnectionStrings:OpenCredentials` from `appsettings.json` (d
 
 ### run.bat
 
-A double-click launcher at the repo root. It starts the web UI (`dotnet run --project v2\Blazor`) and, in parallel, a background PowerShell one-liner that polls `localhost:50677` every 500 ms for up to 60 seconds and opens the default browser the moment the server is listening. It does not start the CLI scanner.
+The MindAttic run menu (`run.bat` on a double-click, or `run.ps1`): `1` Redeploy publishes the web UI and the `opencreds` CLI to `R:\MindAttic\Apps\OpenCredentials\Debug` and `\Release`, `2` Run Debug starts the Debug UI in this console (Development environment), `3` Run Release starts the Release UI on its own. Both listen on `https://localhost:50676` and `http://localhost:50677`; open that in a browser. `13` redeploys, then runs Release. It does not start the CLI scanner; run `opencreds.exe` from either folder for that.
 
 ```powershell
 .\run.bat
+.\run.ps1 -Redeploy -RunRelease
 ```
 
 ## Configuration
@@ -279,7 +280,7 @@ OpenCredentials/
 ├── screenshots/                  internal UI reference captures (not published here)
 ├── findings.db / .db-shm / .db-wal   legacy SQLite artifact (untracked, local only)
 ├── findings.htm                  last committed HTML report snapshot
-├── run.bat                       double-click launcher for the web UI
+├── run.ps1, run.bat              the run menu: redeploy, run Debug, run Release
 └── OpenCredentials.sln           Shared + Cli + Blazor
 ```
 

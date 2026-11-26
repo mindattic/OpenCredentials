@@ -1,3 +1,18 @@
 @echo off
-start "" /b powershell -NoProfile -ExecutionPolicy Bypass -Command "$d=(Get-Date).AddSeconds(60); while ((Get-Date) -lt $d) { try { $c=[Net.Sockets.TcpClient]::new(); $c.Connect('localhost',50677); $c.Dispose(); Start-Process 'http://localhost:50677/'; break } catch { Start-Sleep -Milliseconds 500 } }"
-dotnet run --project v2\Blazor
+rem The MindAttic standard run.bat (MAT-T279), written by deploy-lib.ps1's Write-RunBat - edits here are overwritten.
+rem Double-click: the run.ps1 menu (1 Redeploy, 2 Run Debug, 3 Run Release). Arguments pass through to run.ps1.
+title OpenCredentials
+set "RUN_PS1=%~dp0run.ps1"
+if not exist "%RUN_PS1%" (
+    echo run.ps1 not found at "%RUN_PS1%".
+    pause
+    exit /b 1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%RUN_PS1%" %*
+if errorlevel 1 (
+    echo.
+    echo run.ps1 failed ^(exit %errorlevel%^).
+    pause
+    exit /b 1
+)
+exit /b 0
