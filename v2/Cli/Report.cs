@@ -219,9 +219,11 @@ public static class Report
     private static string BarRow(string label, int n, int max)
     {
         var pct = max > 0 ? (n * 100.0 / max) : 0;
+        // Invariant: a comma-decimal culture would write "45,5%", invalid CSS.
+        var width = pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
         return $"<tr><td>{E(label)}</td>" +
                $"<td class=\"num\">{n}</td>" +
-               $"<td class=\"barcell\"><div class=\"bar\"><div style=\"width:{pct:F1}%\"></div></div></td></tr>";
+               $"<td class=\"barcell\"><div class=\"bar\"><div style=\"width:{width}%\"></div></div></td></tr>";
     }
 
     private static string FindingRow(Finding f)
