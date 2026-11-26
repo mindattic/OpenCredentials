@@ -235,10 +235,17 @@ else
             while (!ct.IsCancellationRequested)
             {
                 await Task.Delay(TimeSpan.FromSeconds(3), ct);
-                if (HasNewSinceWatermark())
+                try
                 {
-                    Reload();
-                    await InvokeAsync(StateHasChanged);
+                    if (HasNewSinceWatermark())
+                    {
+                        Reload();
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Transient DB error (e.g. Azure SQL waking up): skip this tick, retry next.
                 }
             }
         }

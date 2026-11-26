@@ -149,11 +149,18 @@ else
             while (!ct.IsCancellationRequested)
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), ct);
-                var current = Db.MaxLastSeenUtc();
-                if (current is not null && current != _watermark)
+                try
                 {
-                    Reload();
-                    await InvokeAsync(StateHasChanged);
+                    var current = Db.MaxLastSeenUtc();
+                    if (current is not null && current != _watermark)
+                    {
+                        Reload();
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Transient DB error (e.g. Azure SQL waking up): skip this tick, retry next.
                 }
             }
         }

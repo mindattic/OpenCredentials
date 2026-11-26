@@ -147,8 +147,15 @@
         {
             while (await _timer.WaitForNextTickAsync(_cts.Token))
             {
-                Refresh();
-                await InvokeAsync(StateHasChanged);
+                try
+                {
+                    Refresh();
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Transient DB error (e.g. Azure SQL waking up): skip this tick, retry next.
+                }
             }
         }
         catch (OperationCanceledException) { }
